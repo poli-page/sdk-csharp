@@ -1,4 +1,5 @@
 using System.Net.Http;
+using PoliPage.Internal;
 
 namespace PoliPage;
 
@@ -37,6 +38,7 @@ public sealed class PoliPageClient : IDisposable
     private readonly PoliPageClientOptions _options;
     private readonly HttpClient _httpClient;
     private readonly bool _ownsHttpClient;
+    private readonly Render _render;
     private int _disposed;
 
     /// <summary>
@@ -79,6 +81,8 @@ public sealed class PoliPageClient : IDisposable
             _httpClient = new HttpClient { BaseAddress = BaseAddress };
             _ownsHttpClient = true;
         }
+
+        _render = new Render(new HttpTransport(_httpClient, BaseAddress, options.ApiKey, options.RequestTimeout));
     }
 
     /// <summary>
@@ -87,6 +91,11 @@ public sealed class PoliPageClient : IDisposable
     /// <see cref="DefaultBaseAddress"/>.
     /// </summary>
     internal Uri BaseAddress { get; }
+
+    /// <summary>
+    /// Provides access to render operations: PDF, stream, preview, and document output.
+    /// </summary>
+    public Render Render => _render;
 
     /// <summary>
     /// <see langword="true"/> after <see cref="Dispose"/> has been called.
