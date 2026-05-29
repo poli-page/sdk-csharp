@@ -1,0 +1,46 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Ll]og/
+[Ll]ogs/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userprefs
+*.swp
+
+# Test results
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+*.coveragexml
+coverage.*.xml
+coverage.*.info
+coverage.opencover.xml
+.coverage/
+
+# Packaging
+*.nupkg
+*.snupkg
+nupkg/
+
+# Restore / lock files we don't want tracked yet
+*.nuget.props
+*.nuget.targets
+
+# Environment
+.env
+.env.local
+*.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
