@@ -1,0 +1,108 @@
+using System.Net.Http;
+
+namespace PoliPage;
+
+/// <summary>
+/// The primary entry point for the Poli Page API.
+/// Provides methods to render templates, stream output, and manage documents.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Create a single instance per application lifetime and reuse it; the client
+/// is thread-safe. Dispose the instance when the application shuts down to
+/// release underlying HTTP connections.
+/// </para>
+/// <para>
+/// When an <see cref="HttpClient"/> is supplied via
+/// <see cref="PoliPageClientOptions.HttpClient"/>, the caller retains ownership
+/// and must dispose it independently.
+/// </para>
+/// </remarks>
+public sealed class PoliPageClient : IDisposable
+{
+    /// <summary>
+    /// The default base address used when
+    /// <see cref="PoliPageClientOptions.BaseUrl"/> is <see langword="null"/>.
+    /// </summary>
+    internal static readonly Uri DefaultBaseAddress = new("https://api.poli.page");
+
+    private readonly PoliPageClientOptions _options;
+    private readonly HttpClient _httpClient;
+    private readonly bool _ownsHttpClient;
+    private int _disposed;
+
+    /// <summary>
+    /// Initializes a new <see cref="PoliPageClient"/> with the supplied options.
+    /// </summary>
+    /// <param name="options">Client configuration. Must not be <see langword="null"/>.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><see cref="PoliPageClientOptions.ApiKey"/> is <see langword="null"/>, empty, or whitespace.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <see cref="PoliPageClientOptions.MaxRetries"/> is negative, or
+    /// <see cref="PoliPageClientOptions.RetryDelay"/> or
+    /// <see cref="PoliPageClientOptions.RequestTimeout"/> are not positive.
+    /// </exception>
+    public PoliPageClient(PoliPageClientOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (string.IsNullOrWhiteSpace(options.ApiKey))
+            throw new ArgumentException("PoliPage: ApiKey is required.", nameof(options));
+
+        if (options.MaxRetries < 0)
+            throw new ArgumentOutOfRangeException(nameof(options), options.MaxRetries, "PoliPage: MaxRetries must be ≥ 0.");
+
+        if (options.RetryDelay <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(options), options.RetryDelay, "PoliPage: RetryDelay must be > 0.");
+
+        if (options.RequestTimeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(options), options.RequestTimeout, "PoliPage: RequestTimeout must be > 0.");
+
+        _options = options;
+        BaseAddress = options.BaseUrl ?? DefaultBaseAddress;
+
+        if (options.HttpClient is not null)
+        {
+            _httpClient = options.HttpClient;
+            _ownsHttpClient = false;
+        }
+        else
+        {
+            _httpClient = new HttpClient { BaseAddress = BaseAddress };
+            _ownsHttpClient = true;
+        }
+    }
+
+    /// <summary>
+    /// The effective base address used for all API requests.
+    /// Equals <see cref="PoliPageClientOptions.BaseUrl"/> when set; otherwise
+    /// <see cref="DefaultBaseAddress"/>.
+    /// </summary>
+    internal Uri BaseAddress { get; }
+
+    /// <summary>
+    /// <see langword="true"/> after <see cref="Dispose"/> has been called.
+    /// </summary>
+    internal bool IsDisposed => _disposed == 1;
+
+    /// <summary>
+    /// The underlying <see cref="HttpClient"/> used for API requests.
+    /// Exposed internally so unit tests can verify ownership semantics.
+    /// </summary>
+    internal HttpClient HttpClient => _httpClient;
+
+    /// <summary>
+    /// Releases the resources used by this client.
+    /// When the <see cref="HttpClient"/> was created internally (i.e.
+    /// <see cref="PoliPageClientOptions.HttpClient"/> was <see langword="null"/>),
+    /// it is disposed here. Caller-provided instances are left intact.
+    /// </summary>
+    public void Dispose()
+    {
+        if (System.Threading.Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
+        if (_ownsHttpClient)
+            _httpClient.Dispose();
+    }
+}
