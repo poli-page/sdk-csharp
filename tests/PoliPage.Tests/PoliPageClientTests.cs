@@ -115,13 +115,21 @@ public sealed class PoliPageClientTests
     // ------------------------------------------------------------------ //
 
     [Fact]
-    public void Dispose_disposes_owned_HttpClient()
+    public async Task Dispose_disposes_owned_HttpClient()
     {
         var client = new PoliPageClient(ValidOptions());
+        var owned = client.HttpClient;
 
         client.Dispose();
 
         client.IsDisposed.Should().BeTrue();
+
+        // Confirm the underlying HttpClient is itself disposed, not just the wrapper flag.
+        // Disposed HttpClient throws on SendAsync (either ObjectDisposedException directly
+        // or wrapped in InvalidOperationException depending on the runtime).
+        var send = async () => await owned.SendAsync(new HttpRequestMessage(HttpMethod.Get, "https://x"));
+        await send.Should().ThrowAsync<Exception>()
+            .Where(e => e is ObjectDisposedException || e is InvalidOperationException);
     }
 
     [Fact]
