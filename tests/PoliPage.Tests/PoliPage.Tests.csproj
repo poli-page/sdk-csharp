@@ -7,8 +7,10 @@
       CS1591: tests don't need XML doc comments.
       CA1707: xUnit test method names use underscores by convention (Arrange_Act_Assert),
               which violates the no-underscores naming rule. Suppress in tests only.
+      IDE1006: tests follow Method_state_expected naming even when async — the Async suffix
+               rule (enforced for src/ in .editorconfig) makes test names unreadable.
     -->
-    <NoWarn>$(NoWarn);CS1591;CA1707</NoWarn>
+    <NoWarn>$(NoWarn);CS1591;CA1707;IDE1006</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

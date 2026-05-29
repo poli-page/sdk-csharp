@@ -147,19 +147,26 @@ public sealed class PoliPageClientTests
     }
 
     [Fact]
-    public void Dispose_does_not_dispose_caller_provided_HttpClient()
+    public async Task Dispose_does_not_dispose_caller_provided_HttpClient()
     {
         var callerOwned = new HttpClient { BaseAddress = new Uri("https://caller.example.com") };
         var client = new PoliPageClient(ValidOptions() with { HttpClient = callerOwned });
 
         client.Dispose();
 
-        // The caller-owned HttpClient must still be usable (reading BaseAddress is sufficient).
-        var act = () => _ = callerOwned.BaseAddress;
-        act.Should().NotThrow();
-
-        // The PoliPageClient itself is disposed.
         client.IsDisposed.Should().BeTrue();
+
+        // The caller-owned HttpClient must still be operational. Use a pre-cancelled
+        // token: a disposed HttpClient would throw ObjectDisposedException, a healthy
+        // one throws OperationCanceledException because cancellation wins before I/O
+        // begins. Asserting on a property like BaseAddress would be a false-positive —
+        // properties on disposed HttpClient instances do not throw.
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var send = async () => await callerOwned.SendAsync(
+            new HttpRequestMessage(HttpMethod.Get, "https://caller.example.com/probe"),
+            cts.Token);
+        await send.Should().ThrowAsync<OperationCanceledException>();
 
         callerOwned.Dispose();
     }

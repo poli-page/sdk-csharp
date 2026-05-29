@@ -17,6 +17,14 @@ namespace PoliPage;
 /// <see cref="PoliPageClientOptions.HttpClient"/>, the caller retains ownership
 /// and must dispose it independently.
 /// </para>
+/// <para>
+/// All API requests are issued with absolute URIs constructed from
+/// <see cref="PoliPageClientOptions.BaseUrl"/> (or the default
+/// <c>https://api.poli.page</c>). The
+/// <see cref="System.Net.Http.HttpClient.BaseAddress"/> of a caller-provided
+/// <see cref="HttpClient"/> is intentionally ignored, so the same client
+/// instance can safely be shared with non-Poli-Page traffic.
+/// </para>
 /// </remarks>
 public sealed class PoliPageClient : IDisposable
 {
