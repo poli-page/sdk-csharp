@@ -42,6 +42,7 @@ public sealed class PoliPageClient : IDisposable
     private readonly HttpClient _downloadHttp;
     private readonly bool _ownsDownloadHttp;
     private readonly Render _render;
+    private readonly Documents _documents;
     private int _disposed;
 
     /// <summary>
@@ -103,17 +104,17 @@ public sealed class PoliPageClient : IDisposable
             _ownsDownloadHttp = true;
         }
 
-        _render = new Render(
-            new HttpTransport(
-                _httpClient,
-                BaseAddress,
-                options.ApiKey,
-                options.RequestTimeout,
-                options.MaxRetries,
-                options.RetryDelay,
-                options.OnRetry,
-                jitter),
-            DownloadAsync);
+        var transport = new HttpTransport(
+            _httpClient,
+            BaseAddress,
+            options.ApiKey,
+            options.RequestTimeout,
+            options.MaxRetries,
+            options.RetryDelay,
+            options.OnRetry,
+            jitter);
+        _render = new Render(transport, DownloadAsync);
+        _documents = new Documents(transport, DownloadAsync);
     }
 
     /// <summary>
@@ -127,6 +128,12 @@ public sealed class PoliPageClient : IDisposable
     /// Provides access to render operations: PDF, stream, preview, and document output.
     /// </summary>
     public Render Render => _render;
+
+    /// <summary>
+    /// Provides access to document-management operations: retrieve, preview,
+    /// thumbnails, soft-delete.
+    /// </summary>
+    public Documents Documents => _documents;
 
     /// <summary>
     /// <see langword="true"/> after <see cref="Dispose"/> has been called.

@@ -19,10 +19,16 @@ internal interface ITransport
         CancellationToken cancellationToken);
 
     /// <summary>Sends a GET request and returns the raw response.</summary>
-    // Phase 6: wire up the implementation when Documents namespace is added.
-    Task<HttpResponseMessage> GetAsync(string path, RequestOptions? options, CancellationToken cancellationToken);
+    Task<HttpResponseMessage> GetAsync(
+        string path,
+        RequestOptions? options,
+        string accept,
+        HttpCompletionOption completionOption,
+        CancellationToken cancellationToken);
 
-    /// <summary>Sends a DELETE request.</summary>
-    // Phase 6: wire up the implementation when Documents namespace is added.
-    Task DeleteAsync(string path, RequestOptions? options, CancellationToken cancellationToken);
+    /// <summary>Sends a DELETE request and returns the raw response.</summary>
+    Task<HttpResponseMessage> DeleteAsync(
+        string path,
+        RequestOptions? options,
+        CancellationToken cancellationToken);
 }

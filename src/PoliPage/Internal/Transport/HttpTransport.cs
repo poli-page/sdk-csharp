@@ -300,16 +300,45 @@ internal sealed class HttpTransport : ITransport
     }
 
     /// <inheritdoc/>
-    public Task<HttpResponseMessage> GetAsync(string path, RequestOptions? options, CancellationToken cancellationToken)
+    public async Task<HttpResponseMessage> GetAsync(
+        string path,
+        RequestOptions? options,
+        string accept,
+        HttpCompletionOption completionOption,
+        CancellationToken cancellationToken)
     {
-        // Phase 6: implement when Documents namespace is added.
-        throw new NotSupportedException("GetAsync is not yet available. See Phase 6.");
+        var effectiveTimeout = options?.RequestTimeout ?? _defaultTimeout;
+        using var request = BuildBodylessRequest(HttpMethod.Get, path, options, accept);
+        return await SendAndMapErrorsAsync(request, effectiveTimeout, completionOption, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
-    public Task DeleteAsync(string path, RequestOptions? options, CancellationToken cancellationToken)
+    public async Task<HttpResponseMessage> DeleteAsync(string path, RequestOptions? options, CancellationToken cancellationToken)
     {
-        // Phase 6: implement when Documents namespace is added.
-        throw new NotSupportedException("DeleteAsync is not yet available. See Phase 6.");
+        var effectiveTimeout = options?.RequestTimeout ?? _defaultTimeout;
+        using var request = BuildBodylessRequest(HttpMethod.Delete, path, options, "application/json");
+        return await SendAndMapErrorsAsync(request, effectiveTimeout, HttpCompletionOption.ResponseContentRead, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private HttpRequestMessage BuildBodylessRequest(
+        HttpMethod method, string path, RequestOptions? options, string accept)
+    {
+        var uri = ComposeUri(_baseAddress, path);
+        var request = new HttpRequestMessage(method, uri);
+
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+        request.Headers.UserAgent.ParseAdd(UserAgent);
+        request.Headers.Accept.ParseAdd(accept);
+        // GET and DELETE are idempotent by HTTP semantics; no Idempotency-Key needed.
+
+        if (options?.Headers is not null)
+        {
+            foreach (var (key, value) in options.Headers)
+                request.Headers.TryAddWithoutValidation(key, value);
+        }
+
+        return request;
     }
 }
