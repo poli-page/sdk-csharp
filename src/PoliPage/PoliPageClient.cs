@@ -82,7 +82,34 @@ public sealed class PoliPageClient : IDisposable
             _ownsHttpClient = true;
         }
 
-        _render = new Render(new HttpTransport(_httpClient, BaseAddress, options.ApiKey, options.RequestTimeout));
+        _render = new Render(new HttpTransport(
+            _httpClient,
+            BaseAddress,
+            options.ApiKey,
+            options.RequestTimeout,
+            options.MaxRetries,
+            options.RetryDelay,
+            options.OnRetry));
+    }
+
+    /// <summary>
+    /// Internal constructor for unit tests. Allows injecting a deterministic jitter function
+    /// to produce predictable backoff delays.
+    /// </summary>
+    internal PoliPageClient(PoliPageClientOptions options, Func<double> jitter)
+        : this(options)
+    {
+        // Re-create _render with the injected jitter. The base ctor already validated
+        // options and set up the HttpClient; we just replace the transport.
+        _render = new Render(new Internal.HttpTransport(
+            _httpClient,
+            BaseAddress,
+            options.ApiKey,
+            options.RequestTimeout,
+            options.MaxRetries,
+            options.RetryDelay,
+            options.OnRetry,
+            jitter));
     }
 
     /// <summary>

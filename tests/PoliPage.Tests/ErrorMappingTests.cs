@@ -32,6 +32,10 @@ public sealed class ErrorMappingTests
         {
             ApiKey = apiKey,
             BaseUrl = new Uri(server.Url!),
+            // Why: this class tests error-envelope parsing, not retry behavior.
+            // MaxRetries=0 prevents retryable status codes (429, 5xx) from triggering
+            // real backoff delays that would make the suite slow without adding coverage.
+            MaxRetries = 0,
         });
         return new TestHarness(server, client);
     }
@@ -429,6 +433,8 @@ public sealed class ErrorMappingTests
             ApiKey = "pp_test_unit",
             BaseUrl = new Uri("http://nonexistent.invalid"),
             RequestTimeout = TimeSpan.FromSeconds(5),
+            // Why: testing error mapping, not retry behavior.
+            MaxRetries = 0,
         });
 
         var act = async () => await client.Render.PdfAsync(DefaultInput());
@@ -461,6 +467,9 @@ public sealed class ErrorMappingTests
             ApiKey = "pp_test_unit",
             BaseUrl = new Uri(harness.Server.Url!),
             RequestTimeout = TimeSpan.FromMilliseconds(150),
+            // Why: testing timeout mapping, not retry behavior. Retrying a timeout would
+            // also time out (server always delays 2s), adding unnecessary test duration.
+            MaxRetries = 0,
         });
 
         var act = async () => await slowClient.Render.PdfAsync(DefaultInput());
