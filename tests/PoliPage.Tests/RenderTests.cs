@@ -637,6 +637,86 @@ public sealed class RenderTests
             .WithMessage("*was not produced by a PoliPageClient*");
     }
 
+    // ------------------------------------------------------------------ //
+    // 26. PreviewAsync — HTML preview, accepts both modes
+    // ------------------------------------------------------------------ //
+
+    private const string SamplePreviewJson = """
+        {
+            "pages": [
+                "<html><body>Page 1</body></html>",
+                "<html><body>Page 2</body></html>"
+            ],
+            "totalPageCount": 2
+        }
+        """;
+
+    [Fact]
+    public async Task PreviewAsync_returns_PreviewResult_from_JSON()
+    {
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
+        server.Given(Request.Create().WithPath("/preview").UsingPost())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/json")
+                  .WithBody(SamplePreviewJson));
+
+        var result = await client.Render.PreviewAsync(DefaultInput());
+
+        result.Pages.Should().HaveCount(2);
+        result.Pages[0].Should().Contain("Page 1");
+        result.Pages[1].Should().Contain("Page 2");
+        result.TotalPageCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task PreviewAsync_accepts_InlineModeInput()
+    {
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
+        server.Given(Request.Create().WithPath("/preview").UsingPost())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/json")
+                  .WithBody(SamplePreviewJson));
+
+        // The point of taking RenderInput as the abstract base: this compiles.
+        var inline = new InlineModeInput { Template = "<html><body>Hi</body></html>" };
+        var result = await client.Render.PreviewAsync(inline);
+
+        result.TotalPageCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task PreviewAsync_posts_to_preview_endpoint_with_Accept_json()
+    {
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
+        server.Given(Request.Create().WithPath("/preview").UsingPost())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/json")
+                  .WithBody(SamplePreviewJson));
+
+        await client.Render.PreviewAsync(DefaultInput());
+
+        var entry = server.LogEntries.Should().ContainSingle().Subject;
+        entry.RequestMessage.Path.Should().Be("/preview");
+        entry.RequestMessage.Headers!["Accept"].Should().Contain("application/json");
+    }
+
+    [Fact]
+    public async Task PreviewAsync_throws_ArgumentNullException_when_input_is_null()
+    {
+        using var harness = StartServerAndClient();
+        var (_, client) = harness;
+
+        var act = async () => await client.Render.PreviewAsync(null!);
+
+        await act.Should().ThrowAsync<ArgumentNullException>().WithParameterName("input");
+    }
+
     [Fact]
     public async Task DownloadPdfAsync_throws_PoliPageDownloadException_on_non_2xx()
     {

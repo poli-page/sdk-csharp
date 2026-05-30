@@ -140,6 +140,48 @@ public sealed class Render
         return descriptor with { Downloader = _downloader };
     }
 
+    /// <summary>
+    /// Renders a template (project-mode or inline) and returns a paginated HTML
+    /// preview suitable for in-browser display. Unlike <see cref="PdfAsync"/>
+    /// this accepts the abstract <see cref="RenderInput"/> base so callers can
+    /// pass either <see cref="ProjectModeInput"/> or <see cref="InlineModeInput"/>.
+    /// </summary>
+    /// <param name="input">Project-mode or inline render input.</param>
+    /// <param name="options">Optional per-call overrides (idempotency key, timeout, extra headers).</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>A <see cref="PreviewResult"/> with HTML pages and total page count.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="input"/> is <see langword="null"/>.</exception>
+    /// <exception cref="PoliPageException">See <see cref="PdfAsync"/> for the full mapping.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public async Task<PreviewResult> PreviewAsync(
+        RenderInput input,
+        RequestOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+
+        var idempotencyKey = options?.IdempotencyKey ?? Guid.NewGuid().ToString();
+
+        using var response = await _transport.PostAsync(
+            "/preview",
+            input,
+            idempotencyKey,
+            options,
+            "application/json",
+            HttpCompletionOption.ResponseContentRead,
+            cancellationToken).ConfigureAwait(false);
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+#pragma warning disable IL2026, IL3050
+        var preview = JsonSerializer.Deserialize<PreviewResult>(json, JsonOptions);
+#pragma warning restore IL2026, IL3050
+        return preview
+            ?? throw new PoliPageException(
+                PoliPageErrorCode.Unknown,
+                (int)response.StatusCode,
+                "Render.PreviewAsync: server returned 2xx with no JSON body.");
+    }
+
     private static async Task<DocumentDescriptor> ParseDescriptorAsync(
         HttpResponseMessage response, CancellationToken cancellationToken)
     {
