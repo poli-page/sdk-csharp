@@ -54,18 +54,19 @@ internal sealed class HttpTransport : ITransport
         object body,
         string idempotencyKey,
         RequestOptions? options,
+        string accept,
         HttpCompletionOption completionOption,
         CancellationToken cancellationToken)
     {
         var effectiveTimeout = options?.RequestTimeout ?? _defaultTimeout;
 
-        using var request = BuildPostRequest(path, body, idempotencyKey, options);
+        using var request = BuildPostRequest(path, body, idempotencyKey, options, accept);
 
         return await SendAndMapErrorsAsync(request, effectiveTimeout, completionOption, cancellationToken).ConfigureAwait(false);
     }
 
     private HttpRequestMessage BuildPostRequest(
-        string path, object body, string idempotencyKey, RequestOptions? options)
+        string path, object body, string idempotencyKey, RequestOptions? options, string accept)
     {
         var uri = ComposeUri(_baseAddress, path);
 
@@ -83,7 +84,7 @@ internal sealed class HttpTransport : ITransport
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
         request.Headers.UserAgent.ParseAdd(UserAgent);
         request.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey);
-        request.Headers.Accept.ParseAdd("application/pdf");
+        request.Headers.Accept.ParseAdd(accept);
 
         if (options?.Headers is not null)
         {

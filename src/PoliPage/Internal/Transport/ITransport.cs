@@ -14,6 +14,7 @@ internal interface ITransport
         object body,
         string idempotencyKey,
         RequestOptions? options,
+        string accept,
         HttpCompletionOption completionOption,
         CancellationToken cancellationToken);
 

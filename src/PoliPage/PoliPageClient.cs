@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Net.Http;
 using PoliPage.Internal;
 
@@ -38,6 +39,8 @@ public sealed class PoliPageClient : IDisposable
     private readonly PoliPageClientOptions _options;
     private readonly HttpClient _httpClient;
     private readonly bool _ownsHttpClient;
+    private readonly HttpClient _downloadHttp;
+    private readonly bool _ownsDownloadHttp;
     private readonly Render _render;
     private int _disposed;
 
@@ -52,7 +55,11 @@ public sealed class PoliPageClient : IDisposable
     /// <see cref="PoliPageClientOptions.RetryDelay"/> or
     /// <see cref="PoliPageClientOptions.RequestTimeout"/> are not positive.
     /// </exception>
-    public PoliPageClient(PoliPageClientOptions options)
+    public PoliPageClient(PoliPageClientOptions options) : this(options, jitter: null) { }
+
+    // Internal ctor: lets tests inject a deterministic jitter source for the retry
+    // backoff math without leaking the seam onto the public surface.
+    internal PoliPageClient(PoliPageClientOptions options, Func<double>? jitter)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -82,34 +89,31 @@ public sealed class PoliPageClient : IDisposable
             _ownsHttpClient = true;
         }
 
-        _render = new Render(new HttpTransport(
-            _httpClient,
-            BaseAddress,
-            options.ApiKey,
-            options.RequestTimeout,
-            options.MaxRetries,
-            options.RetryDelay,
-            options.OnRetry));
-    }
+        // Why: presigned S3 URLs reject requests that carry an Authorization header alongside
+        // the URL signature, and some object stores 400 on an unexpected User-Agent. The
+        // download path uses its own bare HttpClient so the SDK's API auth/UA can never leak.
+        if (options.DownloadHttpClient is not null)
+        {
+            _downloadHttp = options.DownloadHttpClient;
+            _ownsDownloadHttp = false;
+        }
+        else
+        {
+            _downloadHttp = new HttpClient();
+            _ownsDownloadHttp = true;
+        }
 
-    /// <summary>
-    /// Internal constructor for unit tests. Allows injecting a deterministic jitter function
-    /// to produce predictable backoff delays.
-    /// </summary>
-    internal PoliPageClient(PoliPageClientOptions options, Func<double> jitter)
-        : this(options)
-    {
-        // Re-create _render with the injected jitter. The base ctor already validated
-        // options and set up the HttpClient; we just replace the transport.
-        _render = new Render(new Internal.HttpTransport(
-            _httpClient,
-            BaseAddress,
-            options.ApiKey,
-            options.RequestTimeout,
-            options.MaxRetries,
-            options.RetryDelay,
-            options.OnRetry,
-            jitter));
+        _render = new Render(
+            new HttpTransport(
+                _httpClient,
+                BaseAddress,
+                options.ApiKey,
+                options.RequestTimeout,
+                options.MaxRetries,
+                options.RetryDelay,
+                options.OnRetry,
+                jitter),
+            DownloadAsync);
     }
 
     /// <summary>
@@ -135,6 +139,35 @@ public sealed class PoliPageClient : IDisposable
     /// </summary>
     internal HttpClient HttpClient => _httpClient;
 
+    /// <summary>The header-less HttpClient used for presigned downloads.</summary>
+    internal HttpClient DownloadHttpClient => _downloadHttp;
+
+    /// <summary>
+    /// Fetches the bytes at <paramref name="url"/> via the SDK's dedicated, header-less
+    /// download transport. Used by <see cref="DocumentDescriptor.DownloadPdfAsync"/>.
+    /// </summary>
+    internal async Task<byte[]> DownloadAsync(string url, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        using var response = await _downloadHttp
+            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var requestId = response.Headers.TryGetValues("X-Request-Id", out var v)
+                ? v.FirstOrDefault()
+                : null;
+            throw new PoliPageDownloadException(
+                PoliPageErrorCode.DownloadFailed,
+                (int)response.StatusCode,
+                $"Presigned download failed: HTTP {(int)response.StatusCode}",
+                requestId);
+        }
+
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Releases the resources used by this client.
     /// When the <see cref="HttpClient"/> was created internally (i.e.
@@ -148,5 +181,7 @@ public sealed class PoliPageClient : IDisposable
 
         if (_ownsHttpClient)
             _httpClient.Dispose();
+        if (_ownsDownloadHttp)
+            _downloadHttp.Dispose();
     }
 }

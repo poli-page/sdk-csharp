@@ -471,4 +471,202 @@ public sealed class RenderTests
 
         await act.Should().ThrowAsync<ArgumentNullException>().WithParameterName("input");
     }
+
+    // ------------------------------------------------------------------ //
+    // 19. DocumentAsync returns a descriptor with the presigned URL
+    // ------------------------------------------------------------------ //
+
+    private const string SampleDescriptorJson = """
+        {
+            "documentId": "doc_abc123",
+            "organizationId": "org_xyz",
+            "projectSlug": "billing",
+            "templateSlug": "invoice",
+            "version": "1.0.0",
+            "environment": "test",
+            "format": "pdf",
+            "pageCount": 3,
+            "sizeBytes": 12345,
+            "presignedPdfUrl": "https://placeholder.invalid/doc_abc123.pdf"
+        }
+        """;
+
+    [Fact]
+    public async Task DocumentAsync_returns_descriptor_from_JSON_response()
+    {
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
+        server.Given(Request.Create().WithPath("/render").UsingPost())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/json")
+                  .WithBody(SampleDescriptorJson));
+
+        var descriptor = await client.Render.DocumentAsync(DefaultInput());
+
+        descriptor.DocumentId.Should().Be("doc_abc123");
+        descriptor.OrganizationId.Should().Be("org_xyz");
+        descriptor.PageCount.Should().Be(3);
+        descriptor.SizeBytes.Should().Be(12345);
+        descriptor.PresignedPdfUrl.Should().Be("https://placeholder.invalid/doc_abc123.pdf");
+        descriptor.Format.Should().Be("pdf");
+    }
+
+    [Fact]
+    public async Task DocumentAsync_sends_Accept_application_json_not_pdf()
+    {
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
+        server.Given(Request.Create().WithPath("/render").UsingPost())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/json")
+                  .WithBody(SampleDescriptorJson));
+
+        await client.Render.DocumentAsync(DefaultInput());
+
+        var entry = server.LogEntries.Should().ContainSingle().Subject;
+        entry.RequestMessage.Headers!["Accept"].Should().Contain("application/json");
+        entry.RequestMessage.Headers["Accept"].Should().NotContain("application/pdf");
+    }
+
+    [Fact]
+    public async Task DocumentAsync_throws_ArgumentNullException_when_input_is_null()
+    {
+        using var harness = StartServerAndClient();
+        var (_, client) = harness;
+
+        var act = async () => await client.Render.DocumentAsync(null!);
+
+        await act.Should().ThrowAsync<ArgumentNullException>().WithParameterName("input");
+    }
+
+    // ------------------------------------------------------------------ //
+    // 22. DocumentDescriptor.DownloadPdfAsync uses the SDK-injected downloader
+    // ------------------------------------------------------------------ //
+
+    [Fact]
+    public async Task DownloadPdfAsync_fetches_bytes_from_presigned_URL()
+    {
+        // Stub the API to return a descriptor whose PresignedPdfUrl points at WireMock.
+        using var server = WireMockServer.Start();
+        var presignedUrl = $"{server.Url}/storage/doc_abc.pdf";
+        var descriptorJson = SampleDescriptorJson.Replace(
+            "https://placeholder.invalid/doc_abc123.pdf", presignedUrl, StringComparison.Ordinal);
+
+        server.Given(Request.Create().WithPath("/render").UsingPost())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/json")
+                  .WithBody(descriptorJson));
+
+        server.Given(Request.Create().WithPath("/storage/doc_abc.pdf").UsingGet())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/pdf")
+                  .WithBody(PdfMagicBytes));
+
+        using var client = new PoliPageClient(new PoliPageClientOptions
+        {
+            ApiKey = "pp_test_unit",
+            BaseUrl = new Uri(server.Url!),
+        });
+
+        var descriptor = await client.Render.DocumentAsync(DefaultInput());
+        var pdf = await descriptor.DownloadPdfAsync();
+
+        pdf[..4].Should().Equal(0x25, 0x50, 0x44, 0x46);
+    }
+
+    [Fact]
+    public async Task DownloadPdfAsync_does_NOT_send_Authorization_to_presigned_URL()
+    {
+        // The header-less download transport must never leak the API auth onto S3 — S3
+        // would reject the request as a signature mismatch. Verify by inspecting the
+        // captured request to the storage path.
+        using var server = WireMockServer.Start();
+        var presignedUrl = $"{server.Url}/storage/doc_abc.pdf";
+        var descriptorJson = SampleDescriptorJson.Replace(
+            "https://placeholder.invalid/doc_abc123.pdf", presignedUrl, StringComparison.Ordinal);
+
+        server.Given(Request.Create().WithPath("/render").UsingPost())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/json")
+                  .WithBody(descriptorJson));
+
+        server.Given(Request.Create().WithPath("/storage/doc_abc.pdf").UsingGet())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/pdf")
+                  .WithBody(PdfMagicBytes));
+
+        using var client = new PoliPageClient(new PoliPageClientOptions
+        {
+            ApiKey = "pp_test_unit",
+            BaseUrl = new Uri(server.Url!),
+        });
+
+        var descriptor = await client.Render.DocumentAsync(DefaultInput());
+        await descriptor.DownloadPdfAsync();
+
+        var downloadEntry = server.LogEntries.Should().Contain(e =>
+            e.RequestMessage.Path == "/storage/doc_abc.pdf").Subject;
+        downloadEntry.RequestMessage.Headers.Should().NotContainKey("Authorization",
+            "the download transport must never carry the SDK's API auth header");
+    }
+
+    [Fact]
+    public void DownloadPdfAsync_throws_when_descriptor_has_no_downloader()
+    {
+        // Constructed manually — Downloader is null — DownloadPdfAsync must refuse.
+        var descriptor = new DocumentDescriptor
+        {
+            DocumentId = "doc_manual",
+            OrganizationId = "org_manual",
+            Environment = "test",
+            Format = "pdf",
+            PageCount = 1,
+            SizeBytes = 100,
+            PresignedPdfUrl = "https://example.invalid/doc.pdf",
+        };
+
+        var act = async () => await descriptor.DownloadPdfAsync();
+
+        act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*was not produced by a PoliPageClient*");
+    }
+
+    [Fact]
+    public async Task DownloadPdfAsync_throws_PoliPageDownloadException_on_non_2xx()
+    {
+        using var server = WireMockServer.Start();
+        var presignedUrl = $"{server.Url}/storage/expired.pdf";
+        var descriptorJson = SampleDescriptorJson.Replace(
+            "https://placeholder.invalid/doc_abc123.pdf", presignedUrl, StringComparison.Ordinal);
+
+        server.Given(Request.Create().WithPath("/render").UsingPost())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/json")
+                  .WithBody(descriptorJson));
+
+        // The presigned URL has expired — S3 typically responds with 403.
+        server.Given(Request.Create().WithPath("/storage/expired.pdf").UsingGet())
+              .RespondWith(Response.Create().WithStatusCode(403));
+
+        using var client = new PoliPageClient(new PoliPageClientOptions
+        {
+            ApiKey = "pp_test_unit",
+            BaseUrl = new Uri(server.Url!),
+        });
+
+        var descriptor = await client.Render.DocumentAsync(DefaultInput());
+
+        var act = async () => await descriptor.DownloadPdfAsync();
+
+        var ex = await act.Should().ThrowAsync<PoliPageDownloadException>();
+        ex.Which.StatusCode.Should().Be(403);
+        ex.Which.Code.Should().Be(PoliPageErrorCode.DownloadFailed);
+    }
 }
