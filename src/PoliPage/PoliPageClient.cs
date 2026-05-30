@@ -169,6 +169,40 @@ public sealed class PoliPageClient : IDisposable
     }
 
     /// <summary>
+    /// Convenience helper that renders a stored project template directly to a file
+    /// on disk via <see cref="Render.PdfStreamAsync"/> + <see cref="Stream.CopyToAsync(Stream, CancellationToken)"/>.
+    /// Streams without buffering the whole PDF into memory.
+    /// </summary>
+    /// <param name="input">The project template reference and optional data.</param>
+    /// <param name="path">Destination file path. Existing files are overwritten.</param>
+    /// <param name="options">Optional per-call overrides (idempotency key, timeout, extra headers).</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="input"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="path"/> is <see langword="null"/>, empty, or whitespace.</exception>
+    /// <exception cref="PoliPageException">See <see cref="Render.PdfAsync"/> for the full mapping.</exception>
+    /// <exception cref="IOException">The file at <paramref name="path"/> cannot be created or written.</exception>
+    public async Task RenderToFileAsync(
+        ProjectModeInput input,
+        string path,
+        RequestOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        if (string.IsNullOrWhiteSpace(path))
+            throw new ArgumentException("Path must not be null, empty, or whitespace.", nameof(path));
+
+        var pdf = await Render.PdfStreamAsync(input, options, cancellationToken).ConfigureAwait(false);
+        await using (pdf.ConfigureAwait(false))
+        {
+            var file = File.Create(path);
+            await using (file.ConfigureAwait(false))
+            {
+                await pdf.CopyToAsync(file, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
     /// Releases the resources used by this client.
     /// When the <see cref="HttpClient"/> was created internally (i.e.
     /// <see cref="PoliPageClientOptions.HttpClient"/> was <see langword="null"/>),

@@ -717,6 +717,80 @@ public sealed class RenderTests
         await act.Should().ThrowAsync<ArgumentNullException>().WithParameterName("input");
     }
 
+    // ------------------------------------------------------------------ //
+    // RenderToFileAsync convenience helper
+    // ------------------------------------------------------------------ //
+
+    [Fact]
+    public async Task RenderToFileAsync_writes_PDF_bytes_to_disk()
+    {
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
+        StubRender(server);
+
+        var tempPath = Path.Combine(Path.GetTempPath(), $"polipage-sdk-test-{Guid.NewGuid():N}.pdf");
+        try
+        {
+            await client.RenderToFileAsync(DefaultInput(), tempPath);
+
+            File.Exists(tempPath).Should().BeTrue();
+            var written = await File.ReadAllBytesAsync(tempPath);
+            written[..4].Should().Equal(0x25, 0x50, 0x44, 0x46);
+        }
+        finally
+        {
+            if (File.Exists(tempPath)) File.Delete(tempPath);
+        }
+    }
+
+    [Fact]
+    public async Task RenderToFileAsync_overwrites_existing_file()
+    {
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
+        StubRender(server);
+
+        var tempPath = Path.Combine(Path.GetTempPath(), $"polipage-sdk-test-{Guid.NewGuid():N}.pdf");
+        try
+        {
+            await File.WriteAllBytesAsync(tempPath, new byte[] { 0x00, 0x01, 0x02 });
+            await client.RenderToFileAsync(DefaultInput(), tempPath);
+
+            var written = await File.ReadAllBytesAsync(tempPath);
+            written[..4].Should().Equal(0x25, 0x50, 0x44, 0x46);
+        }
+        finally
+        {
+            if (File.Exists(tempPath)) File.Delete(tempPath);
+        }
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task RenderToFileAsync_throws_ArgumentException_when_path_is_invalid(string? path)
+    {
+        using var harness = StartServerAndClient();
+        var (_, client) = harness;
+
+        var act = async () => await client.RenderToFileAsync(DefaultInput(), path!);
+
+        var ex = await act.Should().ThrowAsync<ArgumentException>();
+        ex.Which.ParamName.Should().Be(nameof(path));
+    }
+
+    [Fact]
+    public async Task RenderToFileAsync_throws_ArgumentNullException_when_input_is_null()
+    {
+        using var harness = StartServerAndClient();
+        var (_, client) = harness;
+
+        var act = async () => await client.RenderToFileAsync(null!, "/tmp/x.pdf");
+
+        await act.Should().ThrowAsync<ArgumentNullException>().WithParameterName("input");
+    }
+
     [Fact]
     public async Task DownloadPdfAsync_throws_PoliPageDownloadException_on_non_2xx()
     {
