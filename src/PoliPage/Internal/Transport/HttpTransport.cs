@@ -54,13 +54,14 @@ internal sealed class HttpTransport : ITransport
         object body,
         string idempotencyKey,
         RequestOptions? options,
+        HttpCompletionOption completionOption,
         CancellationToken cancellationToken)
     {
         var effectiveTimeout = options?.RequestTimeout ?? _defaultTimeout;
 
         using var request = BuildPostRequest(path, body, idempotencyKey, options);
 
-        return await SendAndMapErrorsAsync(request, effectiveTimeout, cancellationToken).ConfigureAwait(false);
+        return await SendAndMapErrorsAsync(request, effectiveTimeout, completionOption, cancellationToken).ConfigureAwait(false);
     }
 
     private HttpRequestMessage BuildPostRequest(
@@ -94,7 +95,7 @@ internal sealed class HttpTransport : ITransport
     }
 
     private async Task<HttpResponseMessage> SendAndMapErrorsAsync(
-        HttpRequestMessage request, TimeSpan attemptTimeout, CancellationToken callerToken)
+        HttpRequestMessage request, TimeSpan attemptTimeout, HttpCompletionOption completionOption, CancellationToken callerToken)
     {
         Exception? lastException = null;
         HttpResponseMessage? response = null;
@@ -114,7 +115,7 @@ internal sealed class HttpTransport : ITransport
                 using var timeoutCts = new CancellationTokenSource(attemptTimeout);
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(callerToken, timeoutCts.Token);
 
-                (response, lastException) = await TrySendAsync(attemptRequest, linkedCts.Token, callerToken).ConfigureAwait(false);
+                (response, lastException) = await TrySendAsync(attemptRequest, completionOption, linkedCts.Token, callerToken).ConfigureAwait(false);
 
                 if (response is { IsSuccessStatusCode: true })
                     return response;
@@ -146,11 +147,14 @@ internal sealed class HttpTransport : ITransport
     /// or (null, exception) on network/timeout failure. Re-throws on caller cancellation.
     /// </summary>
     private async Task<(HttpResponseMessage? Response, Exception? Exception)> TrySendAsync(
-        HttpRequestMessage request, CancellationToken linkedToken, CancellationToken callerToken)
+        HttpRequestMessage request,
+        HttpCompletionOption completionOption,
+        CancellationToken linkedToken,
+        CancellationToken callerToken)
     {
         try
         {
-            var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, linkedToken)
+            var response = await _httpClient.SendAsync(request, completionOption, linkedToken)
                 .ConfigureAwait(false);
             return (response, null);
         }

@@ -1,3 +1,5 @@
+using PoliPage.Internal;
+
 namespace PoliPage;
 
 /// <summary>
@@ -41,8 +43,51 @@ public sealed class Render
             input,
             idempotencyKey,
             options,
+            HttpCompletionOption.ResponseContentRead,
             cancellationToken).ConfigureAwait(false);
 
         return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Renders a stored project template to a PDF and returns a streaming
+    /// <see cref="Stream"/> over the response body. The caller is responsible
+    /// for disposing the returned stream, which releases the underlying
+    /// HTTP response.
+    /// </summary>
+    /// <param name="input">The project template reference and optional data.</param>
+    /// <param name="options">Optional per-call overrides (idempotency key, timeout, extra headers).</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>
+    /// A read-only <see cref="Stream"/> that owns the underlying response. Disposing
+    /// the stream releases the response and its socket. Use this overload for
+    /// large PDFs where buffering the whole document into memory is wasteful.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="input"/> is <see langword="null"/>.</exception>
+    /// <exception cref="PoliPageException">See <see cref="PdfAsync"/> for the full mapping.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public async Task<Stream> PdfStreamAsync(
+        ProjectModeInput input,
+        RequestOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+
+        var idempotencyKey = options?.IdempotencyKey ?? Guid.NewGuid().ToString();
+
+        // ResponseHeadersRead: don't buffer the body — return as soon as headers arrive.
+        var response = await _transport.PostAsync(
+            "/render",
+            input,
+            idempotencyKey,
+            options,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+
+        // Why: the body stream's lifetime is bound to the response. Hand the caller a
+        // wrapper that disposes both when they dispose it, so they get the natural
+        // `using var pdf = await ...PdfStreamAsync(...)` pattern without leaking sockets.
+        var bodyStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        return new ResponseOwnedStream(bodyStream, response);
     }
 }

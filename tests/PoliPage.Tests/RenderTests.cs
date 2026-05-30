@@ -392,4 +392,83 @@ public sealed class RenderTests
         var entry = server.LogEntries.Should().ContainSingle().Subject;
         entry.RequestMessage.Path.Should().Be("/v1/render");
     }
+
+    // ------------------------------------------------------------------ //
+    // 15. PdfStreamAsync returns a Stream that owns the response
+    // ------------------------------------------------------------------ //
+
+    [Fact]
+    public async Task PdfStreamAsync_returns_streamed_PDF_bytes()
+    {
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
+        StubRender(server);
+
+        using var stream = await client.Render.PdfStreamAsync(DefaultInput());
+
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer);
+        var bytes = buffer.ToArray();
+
+        bytes.Should().NotBeEmpty();
+        bytes[..4].Should().Equal(0x25, 0x50, 0x44, 0x46);
+    }
+
+    [Fact]
+    public async Task PdfStreamAsync_disposing_stream_marks_it_closed()
+    {
+        // The wrapper Stream owns the HttpResponseMessage. After Dispose, the
+        // wrapper's CanRead returns false — this is the public, observable proof
+        // that disposal happened. We can't see the response object being disposed
+        // from the outside, but the CanRead flag is the contract.
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
+        StubRender(server);
+
+        var stream = await client.Render.PdfStreamAsync(DefaultInput());
+        stream.CanRead.Should().BeTrue("a fresh stream must be readable");
+
+        stream.Dispose();
+
+        stream.CanRead.Should().BeFalse("a disposed stream must not advertise readability");
+    }
+
+    [Fact]
+    public async Task PdfStreamAsync_propagates_HTTP_error_status_as_PoliPageException()
+    {
+        using var harness = StartServerAndClient();
+        var (server, _) = harness;
+        server.Given(Request.Create().WithPath("/render").UsingPost())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(401)
+                  .WithHeader("Content-Type", "application/json")
+                  .WithBody("{\"code\":\"UNAUTHORIZED\",\"message\":\"bad key\"}"));
+
+        // MaxRetries=0 keeps the test fast — 401 isn't retried anyway, but explicit
+        // is better than relying on it.
+        using var clientWithoutRetry = new PoliPageClient(new PoliPageClientOptions
+        {
+            ApiKey = "pp_test_unit",
+            BaseUrl = new Uri(server.Url!),
+            MaxRetries = 0,
+        });
+
+        var act = async () =>
+        {
+            using var _ = await clientWithoutRetry.Render.PdfStreamAsync(DefaultInput());
+        };
+
+        await act.Should().ThrowAsync<PoliPageAuthException>();
+    }
+
+    [Fact]
+    public async Task PdfStreamAsync_throws_ArgumentNullException_when_input_is_null()
+    {
+        using var harness = StartServerAndClient();
+        var (_, client) = harness;
+
+        var act = async () => await client.Render.PdfStreamAsync(null!);
+
+        await act.Should().ThrowAsync<ArgumentNullException>().WithParameterName("input");
+    }
 }
