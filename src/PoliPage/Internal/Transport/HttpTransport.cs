@@ -40,7 +40,7 @@ internal sealed class HttpTransport : ITransport
         using var timeoutCts = new CancellationTokenSource(effectiveTimeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
-        var uri = new Uri(_baseAddress, path);
+        var uri = ComposeUri(_baseAddress, path);
 
         // Why: Phase 8 will replace this with JsonSerializerContext (source-gen) for full
         // AOT/trim safety. Until then, suppress the IL2026/IL3050 diagnostics — the
@@ -67,8 +67,21 @@ internal sealed class HttpTransport : ITransport
                 request.Headers.TryAddWithoutValidation(key, value);
         }
 
-        return await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linkedCts.Token)
+        return await _httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, linkedCts.Token)
             .ConfigureAwait(false);
+    }
+
+    // Why: `new Uri(base, "/render")` silently drops base path segments when the relative
+    // starts with '/' (RFC 3986 §5.2). That breaks any caller passing a versioned base URL
+    // such as `https://api.poli.page/v1/`. Normalize: ensure base ends with '/' and the
+    // relative does NOT start with '/', then compose deterministically.
+    internal static Uri ComposeUri(Uri baseAddress, string relativePath)
+    {
+        var baseStr = baseAddress.AbsoluteUri;
+        if (!baseStr.EndsWith('/'))
+            baseStr += "/";
+        var relative = relativePath.TrimStart('/');
+        return new Uri(new Uri(baseStr), relative);
     }
 
     public Task<HttpResponseMessage> GetAsync(string path, RequestOptions? options, CancellationToken cancellationToken)

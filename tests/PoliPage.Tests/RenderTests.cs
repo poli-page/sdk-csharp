@@ -15,7 +15,21 @@ public sealed class RenderTests
 
     private static readonly byte[] PdfMagicBytes = [0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34]; // %PDF-1.4
 
-    private static (WireMockServer Server, PoliPageClient Client) StartServerAndClient(string apiKey = "pp_test_unit")
+    /// <summary>
+    /// Owns a WireMockServer + PoliPageClient pair for the duration of a test.
+    /// Both are released together via <see cref="Dispose"/> — a leaked server
+    /// keeps a TCP listener open and risks port exhaustion under CI.
+    /// </summary>
+    private sealed record TestHarness(WireMockServer Server, PoliPageClient Client) : IDisposable
+    {
+        public void Dispose()
+        {
+            Client.Dispose();
+            Server.Dispose();
+        }
+    }
+
+    private static TestHarness StartServerAndClient(string apiKey = "pp_test_unit")
     {
         var server = WireMockServer.Start();
         var client = new PoliPageClient(new PoliPageClientOptions
@@ -23,7 +37,7 @@ public sealed class RenderTests
             ApiKey = apiKey,
             BaseUrl = new Uri(server.Url!),
         });
-        return (server, client);
+        return new TestHarness(server, client);
     }
 
     /// <summary>Registers a default POST /render stub that returns a %PDF-1.4 body.</summary>
@@ -63,11 +77,11 @@ public sealed class RenderTests
     [Fact]
     public async Task PdfAsync_returns_bytes_on_200_with_application_pdf()
     {
-        var (server, client) = StartServerAndClient();
-        using var c = client;
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
         StubRender(server);
 
-        var pdf = await c.Render.PdfAsync(DefaultInput());
+        var pdf = await client.Render.PdfAsync(DefaultInput());
 
         pdf.Should().NotBeEmpty();
         pdf[..4].Should().Equal(0x25, 0x50, 0x44, 0x46); // %PDF
@@ -80,11 +94,11 @@ public sealed class RenderTests
     [Fact]
     public async Task PdfAsync_sends_POST_to_render()
     {
-        var (server, client) = StartServerAndClient();
-        using var c = client;
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
         StubRender(server);
 
-        await c.Render.PdfAsync(DefaultInput());
+        await client.Render.PdfAsync(DefaultInput());
 
         var entry = server.LogEntries.Should().ContainSingle().Subject;
         entry.RequestMessage.Method.Should().Be("POST");
@@ -98,11 +112,11 @@ public sealed class RenderTests
     [Fact]
     public async Task PdfAsync_sends_Authorization_Bearer_header()
     {
-        var (server, client) = StartServerAndClient(apiKey: "pp_test_unit");
-        using var c = client;
+        using var harness = StartServerAndClient(apiKey: "pp_test_unit");
+        var (server, client) = harness;
         StubRender(server);
 
-        await c.Render.PdfAsync(DefaultInput());
+        await client.Render.PdfAsync(DefaultInput());
 
         var entry = server.LogEntries.Should().ContainSingle().Subject;
         var value = GetSingleHeader(entry.RequestMessage.Headers!, "Authorization");
@@ -116,11 +130,11 @@ public sealed class RenderTests
     [Fact]
     public async Task PdfAsync_sends_User_Agent_header()
     {
-        var (server, client) = StartServerAndClient();
-        using var c = client;
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
         StubRender(server);
 
-        await c.Render.PdfAsync(DefaultInput());
+        await client.Render.PdfAsync(DefaultInput());
 
         var entry = server.LogEntries.Should().ContainSingle().Subject;
         var ua = GetSingleHeader(entry.RequestMessage.Headers!, "User-Agent");
@@ -134,11 +148,11 @@ public sealed class RenderTests
     [Fact]
     public async Task PdfAsync_sends_Accept_application_pdf()
     {
-        var (server, client) = StartServerAndClient();
-        using var c = client;
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
         StubRender(server);
 
-        await c.Render.PdfAsync(DefaultInput());
+        await client.Render.PdfAsync(DefaultInput());
 
         var entry = server.LogEntries.Should().ContainSingle().Subject;
         entry.RequestMessage.Headers.Should().ContainKey("Accept");
@@ -152,11 +166,11 @@ public sealed class RenderTests
     [Fact]
     public async Task PdfAsync_sends_Content_Type_application_json()
     {
-        var (server, client) = StartServerAndClient();
-        using var c = client;
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
         StubRender(server);
 
-        await c.Render.PdfAsync(DefaultInput());
+        await client.Render.PdfAsync(DefaultInput());
 
         var entry = server.LogEntries.Should().ContainSingle().Subject;
         var ct = GetSingleHeader(entry.RequestMessage.Headers!, "Content-Type");
@@ -170,11 +184,11 @@ public sealed class RenderTests
     [Fact]
     public async Task PdfAsync_sends_auto_generated_Idempotency_Key_when_not_provided()
     {
-        var (server, client) = StartServerAndClient();
-        using var c = client;
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
         StubRender(server);
 
-        await c.Render.PdfAsync(DefaultInput());
+        await client.Render.PdfAsync(DefaultInput());
 
         var entry = server.LogEntries.Should().ContainSingle().Subject;
         var key = GetSingleHeader(entry.RequestMessage.Headers!, "Idempotency-Key");
@@ -189,11 +203,11 @@ public sealed class RenderTests
     [Fact]
     public async Task PdfAsync_uses_RequestOptions_IdempotencyKey_override_when_provided()
     {
-        var (server, client) = StartServerAndClient();
-        using var c = client;
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
         StubRender(server);
 
-        await c.Render.PdfAsync(DefaultInput(), new RequestOptions { IdempotencyKey = "inv-INV-001" });
+        await client.Render.PdfAsync(DefaultInput(), new RequestOptions { IdempotencyKey = "inv-INV-001" });
 
         var entry = server.LogEntries.Should().ContainSingle().Subject;
         var key = GetSingleHeader(entry.RequestMessage.Headers!, "Idempotency-Key");
@@ -207,8 +221,8 @@ public sealed class RenderTests
     [Fact]
     public async Task PdfAsync_serializes_body_as_camelCase_JSON()
     {
-        var (server, client) = StartServerAndClient();
-        using var c = client;
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
         StubRender(server);
 
         var input = new ProjectModeInput
@@ -219,7 +233,7 @@ public sealed class RenderTests
             Data = new { customerName = "Acme Corp" },
         };
 
-        await c.Render.PdfAsync(input);
+        await client.Render.PdfAsync(input);
 
         var entry = server.LogEntries.Should().ContainSingle().Subject;
         var rawBody = entry.RequestMessage.Body;
@@ -239,35 +253,59 @@ public sealed class RenderTests
     [Fact]
     public async Task PdfAsync_throws_ArgumentNullException_when_input_is_null()
     {
-        var (server, client) = StartServerAndClient();
-        using var c = client;
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
         StubRender(server);
 
-        var act = async () => await c.Render.PdfAsync(null!);
+        var act = async () => await client.Render.PdfAsync(null!);
 
         await act.Should().ThrowAsync<ArgumentNullException>()
             .WithParameterName("input");
     }
 
     // ------------------------------------------------------------------ //
-    // 11. CancellationToken cancels the operation
+    // 11a. Pre-cancelled token short-circuits before SendAsync
     // ------------------------------------------------------------------ //
 
     [Fact]
-    public async Task PdfAsync_passes_cancellationToken()
+    public async Task PdfAsync_throws_when_token_pre_cancelled()
     {
-        var (server, client) = StartServerAndClient();
-        using var c = client;
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
         StubRender(server);
 
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        var act = async () => await c.Render.PdfAsync(DefaultInput(), cancellationToken: cts.Token);
+        var act = async () => await client.Render.PdfAsync(DefaultInput(), cancellationToken: cts.Token);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
-        // Request was cancelled before or during send; WireMock may or may not have received it.
-        // The important guarantee: no successful return value was produced.
+    }
+
+    // ------------------------------------------------------------------ //
+    // 11b. Cancellation mid-send aborts the request
+    // ------------------------------------------------------------------ //
+
+    [Fact]
+    public async Task PdfAsync_throws_when_token_cancelled_mid_send()
+    {
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
+
+        // Server stub holds the response for 2s so cancellation fires during the send.
+        server.Given(Request.Create().WithPath("/render").UsingPost())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/pdf")
+                  .WithBody(PdfMagicBytes)
+                  .WithDelay(TimeSpan.FromSeconds(2)));
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        var act = async () => await client.Render.PdfAsync(DefaultInput(), cancellationToken: cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        cts.Token.IsCancellationRequested.Should().BeTrue();
     }
 
     // ------------------------------------------------------------------ //
@@ -277,11 +315,11 @@ public sealed class RenderTests
     [Fact]
     public async Task PdfAsync_passes_per_call_Headers()
     {
-        var (server, client) = StartServerAndClient();
-        using var c = client;
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
         StubRender(server);
 
-        await c.Render.PdfAsync(
+        await client.Render.PdfAsync(
             DefaultInput(),
             new RequestOptions
             {
@@ -301,7 +339,7 @@ public sealed class RenderTests
     public async Task PdfAsync_uses_absolute_URI_built_from_BaseAddress_not_caller_HttpClient_BaseAddress()
     {
         // Arrange: WireMock server is the real SDK base address.
-        var server = WireMockServer.Start();
+        using var server = WireMockServer.Start();
         StubRender(server);
 
         // A caller-owned HttpClient with a DIFFERENT BaseAddress (a non-existent host).
@@ -323,5 +361,35 @@ public sealed class RenderTests
         // Assert: WireMock received the request (SDK used the correct base address)
         pdf[..4].Should().Equal(0x25, 0x50, 0x44, 0x46); // %PDF
         server.LogEntries.Should().ContainSingle("the request should have been routed to the SDK base URL");
+    }
+
+    // ------------------------------------------------------------------ //
+    // 14. Versioned base URL preserves the path prefix
+    // ------------------------------------------------------------------ //
+
+    [Fact]
+    public async Task PdfAsync_preserves_base_path_prefix_when_BaseUrl_is_versioned()
+    {
+        // Why: `new Uri(base, "/render")` silently drops base path segments because the
+        // leading '/' makes the relative absolute (RFC 3986 §5.2). HttpTransport.ComposeUri
+        // must normalise so a versioned base URL routes to /v1/render, not /render.
+        using var server = WireMockServer.Start();
+        server.Given(Request.Create().WithPath("/v1/render").UsingPost())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/pdf")
+                  .WithBody(PdfMagicBytes));
+
+        using var client = new PoliPageClient(new PoliPageClientOptions
+        {
+            ApiKey = "pp_test_unit",
+            BaseUrl = new Uri(server.Url + "/v1/"),
+        });
+
+        var pdf = await client.Render.PdfAsync(DefaultInput());
+
+        pdf[..4].Should().Equal(0x25, 0x50, 0x44, 0x46);
+        var entry = server.LogEntries.Should().ContainSingle().Subject;
+        entry.RequestMessage.Path.Should().Be("/v1/render");
     }
 }
