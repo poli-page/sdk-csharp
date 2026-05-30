@@ -1,0 +1,39 @@
+---
+title: Install
+description: How to install the Poli Page .NET SDK from NuGet.
+---
+
+The Poli Page .NET SDK ships as the `PoliPage` package on NuGet. It targets `net8.0` (LTS) and `net10.0` (LTS) and runs on Linux, macOS, and Windows.
+
+## Install with the .NET CLI
+
+```bash
+dotnet add package PoliPage
+```
+
+Or add the reference directly to your `.csproj`:
+
+```xml
+<ItemGroup>
+  <PackageReference Include="PoliPage" Version="1.0.0" />
+</ItemGroup>
+```
+
+## Target framework
+
+The SDK targets `net8.0` and `net10.0`. CI exercises both on Ubuntu, plus `net10.0` on Windows and macOS. See [runtime support](../../reference/runtime-support/) for the full matrix.
+
+## Example
+
+```csharp
+using PoliPage;
+
+var client = new PoliPageClient(new PoliPageClientOptions
+{
+    ApiKey = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
+});
+```
+
+## See also
+- [Quick start](../quick-start/)
+- [Configuration](../../concepts/configuration/)

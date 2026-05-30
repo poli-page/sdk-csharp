@@ -1,0 +1,100 @@
+---
+title: Output handling
+description: Receive PDF bytes in memory, as a stream, written to disk, or stored server-side.
+---
+
+The SDK gives you four ways to handle a rendered PDF: in-memory `byte[]`, a `Stream`, a write-to-disk helper, or a stored document on the server. Pick the one that matches how your code consumes the output.
+
+## In-memory (`Render.PdfAsync`)
+
+```csharp
+byte[] pdf = await client.Render.PdfAsync(new ProjectModeInput
+{
+    Project  = "billing",
+    Template = "invoice",
+    Version  = "1.0.0",
+    Data     = new Dictionary<string, object> { { "invoiceNumber", "INV-001" } },
+});
+// `pdf` is a byte[] — write, upload, return as-is.
+```
+
+Best for documents that fit comfortably in process memory.
+
+## Streaming (`Render.PdfStreamAsync`)
+
+For large PDFs or piping straight to an HTTP response or object store, use `PdfStreamAsync` and keep memory bounded. The returned `Stream` is the underlying HTTP response body — dispose it when you're done.
+
+```csharp
+await using Stream stream = await client.Render.PdfStreamAsync(new ProjectModeInput
+{
+    Project  = "billing",
+    Template = "invoice",
+    Version  = "1.0.0",
+    Data     = new Dictionary<string, object> { { "invoiceNumber", "INV-001" } },
+});
+
+await stream.CopyToAsync(Response.Body);
+```
+
+## Write to file (`PoliPageClient.RenderToFileAsync`)
+
+The client exposes a helper that streams bytes directly to disk with bounded memory. Parent directories are created automatically.
+
+```csharp
+await client.RenderToFileAsync(
+    new ProjectModeInput
+    {
+        Project  = "billing",
+        Template = "invoice",
+        Version  = "1.0.0",
+        Data     = new Dictionary<string, object> { { "invoiceNumber", "INV-001" } },
+    },
+    "./invoices/INV-001.pdf");
+```
+
+## Server-side storage (`Render.DocumentAsync`)
+
+When you want the PDF to live on Poli Page's servers (for later download, preview, or thumbnails), use `Render.DocumentAsync`. It returns a `DocumentDescriptor` with `DocumentId`, `PresignedPdfUrl`, and a `DownloadPdfAsync` method.
+
+```csharp
+DocumentDescriptor doc = await client.Render.DocumentAsync(new ProjectModeInput
+{
+    Project  = "billing",
+    Template = "invoice",
+    Version  = "1.0.0",
+    Data     = new Dictionary<string, object> { { "invoiceNumber", "INV-001" } },
+});
+
+byte[] pdf = await doc.DownloadPdfAsync();
+```
+
+`PresignedPdfUrl` has a ~15-minute TTL. If it expires, call `client.Documents.GetAsync(documentId)` to refresh.
+
+## Example
+
+```csharp
+using PoliPage;
+
+var client = new PoliPageClient(new PoliPageClientOptions
+{
+    ApiKey = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
+});
+
+await client.RenderToFileAsync(
+    new ProjectModeInput
+    {
+        Project  = "billing",
+        Template = "invoice",
+        Version  = "1.0.0",
+        Data     = new Dictionary<string, object>
+        {
+            { "invoiceNumber", "INV-001" },
+            { "total", 1280 },
+        },
+    },
+    "./invoices/INV-001.pdf");
+```
+
+## See also
+- [Cancellation](../../production/cancellation/)
+- [Retries and idempotency](../../production/retries-and-idempotency/)

@@ -1,0 +1,73 @@
+---
+title: Cancellation
+description: How to cancel in-flight requests with CancellationToken.
+---
+
+Every async method on the SDK accepts a `CancellationToken`. Cancelling the token aborts the underlying HTTP call; the SDK throws `OperationCanceledException` (or its `TaskCanceledException` subclass) so callers can use the standard BCL pattern to bail out.
+
+## Pass a CancellationToken
+
+```csharp
+using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+try
+{
+    byte[] pdf = await client.Render.PdfAsync(
+        new ProjectModeInput
+        {
+            Project  = "billing",
+            Template = "invoice",
+            Version  = "1.0.0",
+            Data     = new Dictionary<string, object> { { "invoiceNumber", "INV-001" } },
+        },
+        cancellationToken: cts.Token);
+}
+catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+{
+    Console.WriteLine("cancelled by caller");
+}
+```
+
+## Cancellation vs request timeout
+
+`PoliPageClientOptions.RequestTimeout` is enforced internally with a linked `CancellationTokenSource`. Your caller-supplied token is composed with the internal one — whichever fires first wins, so caller cancellation always wins on or before the SDK timeout.
+
+When the per-request timeout fires, the SDK throws `PoliPageException` with `Code == PoliPageErrorCode.Timeout` (so it can be retried per the [retry policy](../retries-and-idempotency/)). When the caller cancels, the SDK lets `OperationCanceledException` propagate — caller-aborted operations are never retried.
+
+## Example
+
+```csharp
+using PoliPage;
+
+var client = new PoliPageClient(new PoliPageClientOptions
+{
+    ApiKey = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
+});
+
+using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+try
+{
+    byte[] pdf = await client.Render.PdfAsync(
+        new ProjectModeInput
+        {
+            Project  = "billing",
+            Template = "invoice",
+            Version  = "1.0.0",
+            Data     = new Dictionary<string, object>
+            {
+                { "invoiceNumber", "INV-001" },
+                { "total", 1280 },
+            },
+        },
+        cancellationToken: cts.Token);
+}
+catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+{
+    // Caller cancellation — never retried.
+}
+```
+
+## See also
+- [Configuration](../../concepts/configuration/)
+- [Errors](../errors/)

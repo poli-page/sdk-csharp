@@ -1,0 +1,54 @@
+---
+title: Configuration
+description: Per-client options for timeouts, retries, observability hooks, and HttpClient injection.
+---
+
+The `PoliPageClient` constructor accepts a `PoliPageClientOptions` record. Every property is optional except `ApiKey`. Defaults match the canonical SDK behaviour shared by every Poli Page SDK.
+
+## Available options
+
+- `ApiKey` (required) — your `pp_test_` or `pp_live_` key. Throws `ArgumentException` if null/empty/whitespace.
+- `BaseUrl` — override the API endpoint. Defaults to `https://api.poli.page`.
+- `RequestTimeout` — per-request timeout. Defaults to `TimeSpan.FromSeconds(60)`. Must be `> TimeSpan.Zero`.
+- `MaxRetries` — maximum retry attempts for retryable errors. Defaults to `2` (three total attempts). Must be `>= 0`.
+- `RetryDelay` — initial backoff delay. Defaults to `TimeSpan.FromMilliseconds(500)`. Doubles each attempt with jitter.
+- `HttpClient` — externally-managed `HttpClient` to share across requests. Caller retains ownership.
+- `Logger` — `ILogger<PoliPageClient>` for SDK diagnostics. Defaults to a no-op logger.
+- `OnRetry` / `OnError` — observability callbacks. Synchronous, exception-safe.
+
+## Injecting an HttpClient
+
+When `HttpClient` is supplied via `PoliPageClientOptions.HttpClient`, the caller retains ownership and the SDK never disposes it. The client ignores the supplied instance's `BaseAddress` — it builds absolute URIs from `BaseUrl` instead — so the same `HttpClient` can safely be shared with non-Poli-Page traffic.
+
+```csharp
+var client = new PoliPageClient(new PoliPageClientOptions
+{
+    ApiKey     = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
+    HttpClient = httpClientFactory.CreateClient("poli-page"),
+});
+```
+
+## Example
+
+```csharp
+using Microsoft.Extensions.Logging;
+using PoliPage;
+
+var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+
+var client = new PoliPageClient(new PoliPageClientOptions
+{
+    ApiKey         = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
+    RequestTimeout = TimeSpan.FromSeconds(30),
+    MaxRetries     = 3,
+    RetryDelay     = TimeSpan.FromMilliseconds(250),
+    Logger         = loggerFactory.CreateLogger<PoliPageClient>(),
+    OnRetry        = evt => Console.WriteLine($"retry attempt={evt.Attempt} delay={evt.Delay}"),
+    OnError        = ex  => Console.Error.WriteLine($"terminal failure: {ex.Message}"),
+});
+```
+
+## See also
+- [Authentication](../authentication/)
+- [Observability](../../production/observability/)
+- [Retries and idempotency](../../production/retries-and-idempotency/)

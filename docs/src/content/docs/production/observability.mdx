@@ -1,0 +1,70 @@
+---
+title: Observability
+description: Hooks for logging requests, retries, and errors via ILogger and synchronous callbacks.
+---
+
+The SDK exposes two optional callbacks on `PoliPageClientOptions` (`OnRetry`, `OnError`) plus an optional `ILogger<PoliPageClient>`. They give you the raw signal needed to instrument the SDK with whatever logger or tracing library you use, without baking a dependency into the SDK itself.
+
+## ILogger integration
+
+Pass an `ILogger<PoliPageClient>` to receive structured log entries: one DEBUG per HTTP attempt, one WARN per retry, one ERROR per terminal failure. The `Authorization` header is never logged.
+
+```csharp
+using Microsoft.Extensions.Logging;
+
+var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+
+var client = new PoliPageClient(new PoliPageClientOptions
+{
+    ApiKey = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
+    Logger = loggerFactory.CreateLogger<PoliPageClient>(),
+});
+```
+
+## Retry and error callbacks
+
+`OnRetry(RetryEvent)` fires before each retry sleep with `Attempt`, `Delay`, `StatusCode`, and `Reason`. `OnError(Exception)` fires once when a request fails terminally after retries are exhausted.
+
+Both callbacks are synchronous and exception-safe — a callback that throws is swallowed by the SDK and does not break the request.
+
+```csharp
+var client = new PoliPageClient(new PoliPageClientOptions
+{
+    ApiKey  = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
+    OnRetry = evt => metrics.Counter("poli.retry").Add(1, ("attempt", evt.Attempt)),
+    OnError = ex  => sentry.CaptureException(ex),
+});
+```
+
+## Tracing
+
+For OpenTelemetry, register the SDK's activity source (`PoliPage`) on your `TracerProviderBuilder`. The SDK emits one activity per HTTP attempt, so retried requests produce multiple spans you can correlate via the request id.
+
+## Example
+
+```csharp
+using Microsoft.Extensions.Logging;
+using PoliPage;
+
+var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+
+var client = new PoliPageClient(new PoliPageClientOptions
+{
+    ApiKey  = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
+    Logger  = loggerFactory.CreateLogger<PoliPageClient>(),
+    OnRetry = evt => Console.WriteLine($"retry #{evt.Attempt} after {evt.Delay}: {evt.Reason}"),
+    OnError = ex  => Console.Error.WriteLine($"terminal failure: {ex.Message}"),
+});
+
+byte[] pdf = await client.Render.PdfAsync(new ProjectModeInput
+{
+    Project  = "billing",
+    Template = "invoice",
+    Version  = "1.0.0",
+    Data     = new Dictionary<string, object> { { "invoiceNumber", "INV-001" } },
+});
+```
+
+## See also
+- [Configuration](../../concepts/configuration/)
+- [Errors](../errors/)

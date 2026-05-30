@@ -1,0 +1,55 @@
+---
+title: Authentication
+description: How the Poli Page .NET SDK authenticates with the API using test or live keys.
+---
+
+import ApiKeyCallout from '@preset/components/ApiKeyCallout.astro';
+
+The Poli Page .NET SDK authenticates every request with a bearer token. The key prefix determines which environment the request hits.
+
+## API keys
+
+<ApiKeyCallout />
+
+Pass the key to the client through `PoliPageClientOptions`:
+
+```csharp
+var client = new PoliPageClient(new PoliPageClientOptions
+{
+    ApiKey = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
+});
+```
+
+The SDK never reads `POLI_PAGE_API_KEY` implicitly — you always pass the key in through `ApiKey`. Passing a `null`, empty, or whitespace value throws `ArgumentException` from the `PoliPageClient` constructor.
+
+## Custom base URL
+
+To target the develop environment (or a self-hosted gateway), override `BaseUrl`:
+
+```csharp
+var client = new PoliPageClient(new PoliPageClientOptions
+{
+    ApiKey  = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
+    BaseUrl = new Uri("https://api-develop.poli.page"),
+});
+```
+
+When `BaseUrl` is `null` (the default), the client uses `https://api.poli.page`.
+
+## Example
+
+```csharp
+using PoliPage;
+
+var baseUrl = Environment.GetEnvironmentVariable("POLI_PAGE_BASE_URL");
+
+var client = new PoliPageClient(new PoliPageClientOptions
+{
+    ApiKey  = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
+    BaseUrl = baseUrl is null ? null : new Uri(baseUrl),
+});
+```
+
+## See also
+- [Configuration](../configuration/)
+- [Errors](../../production/errors/)

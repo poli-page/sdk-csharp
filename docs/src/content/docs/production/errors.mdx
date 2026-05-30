@@ -1,0 +1,90 @@
+---
+title: Errors
+description: How the Poli Page .NET SDK surfaces failures and how to handle each exception type.
+---
+
+import ErrorTable from '@preset/components/ErrorTable.astro';
+
+Every failure thrown by the SDK is a `PoliPageException` or a subclass. Catch the subclass for targeted handling; catch the base type to handle every SDK error in one place.
+
+## The exception hierarchy
+
+`PoliPageException` exposes four public properties: `Code` (a `PoliPageErrorCode` constant), `StatusCode` (HTTP status, `0` for network failures), `Message`, and `RequestId` (server-assigned id, `null` when no response was received).
+
+```csharp
+using PoliPage;
+
+try
+{
+    byte[] pdf = await client.Render.PdfAsync(input);
+}
+catch (PoliPageAuthException)          { await RefreshCredentialsAsync(); }
+catch (PoliPageRateLimitException ex)  { await QueueForLaterAsync(ex.RetryAfter); }
+catch (PoliPageNotFoundException)      { /* template / version / document missing */ }
+catch (PoliPageValidationException ex) { /* malformed input — bad data */ }
+catch (PoliPageException ex)
+{
+    Console.Error.WriteLine($"code={ex.Code} status={ex.StatusCode} requestId={ex.RequestId}");
+    throw;
+}
+```
+
+## Subclasses
+
+<ErrorTable errors={[
+  { code: 'PoliPageAuthException',             when: 'HTTP 401 or 403 — API key missing, invalid, or lacking permission.', recovery: 'Rotate the key in the dashboard; verify the prefix matches the environment.' },
+  { code: 'PoliPageNotFoundException',         when: 'HTTP 404 — project, template, version, or document not found.', recovery: 'Verify the slugs and that the template is published in this environment.' },
+  { code: 'PoliPageGoneException',             when: 'HTTP 410 — resource permanently removed (e.g. soft-deleted document).', recovery: 'Not retryable. Treat as a hard failure.' },
+  { code: 'PoliPageValidationException',       when: 'HTTP 400 or 422 — request body failed server-side validation.', recovery: 'Inspect Message for the failing field; fix the input.' },
+  { code: 'PoliPageRateLimitException',        when: 'HTTP 429 — quota exhausted. Exposes RetryAfter.', recovery: 'Automatically retried up to MaxRetries. Honour RetryAfter.' },
+  { code: 'PoliPagePaymentRequiredException',  when: 'HTTP 402 — organisation has unpaid invoices.', recovery: 'Update the payment method in the dashboard.' },
+  { code: 'PoliPageNetworkException',          when: 'DNS / TCP / TLS failure or transport-level timeout. StatusCode = 0.', recovery: 'Automatically retried up to MaxRetries.' },
+  { code: 'PoliPageDownloadException',         when: 'Presigned URL download from storage failed (commonly URL expiry).', recovery: 'Call Documents.GetAsync(id) to refresh the URL.' },
+  { code: 'PoliPageException',                 when: 'Any other API failure, including per-request timeout (Code == Timeout).', recovery: 'Inspect Code and StatusCode to decide.' },
+]} />
+
+The wire-level error code is also surfaced verbatim through `PoliPageException.Code`. Compare against the `PoliPageErrorCode` constants instead of raw strings:
+
+```csharp
+catch (PoliPageException ex) when (ex.Code == PoliPageErrorCode.QuotaExceeded)
+{
+    // bespoke handling on top of the SDK's built-in retries.
+}
+```
+
+The full code list lives in [the reference](../../reference/errors/).
+
+## Example
+
+```csharp
+using PoliPage;
+
+var client = new PoliPageClient(new PoliPageClientOptions
+{
+    ApiKey = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
+});
+
+try
+{
+    byte[] pdf = await client.Render.PdfAsync(new ProjectModeInput
+    {
+        Project  = "billing",
+        Template = "invoice",
+        Version  = "1.0.0",
+        Data     = new Dictionary<string, object>
+        {
+            { "invoiceNumber", "INV-001" },
+            { "total", 1280 },
+        },
+    });
+}
+catch (PoliPageException ex)
+{
+    Console.Error.WriteLine($"render failed: code={ex.Code} requestId={ex.RequestId}");
+    throw;
+}
+```
+
+## See also
+- [Retries and idempotency](../retries-and-idempotency/)
+- [Observability](../observability/)
