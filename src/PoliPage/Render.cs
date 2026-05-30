@@ -18,6 +18,15 @@ public sealed class Render
     /// <param name="cancellationToken">Token to cancel the operation.</param>
     /// <returns>The raw PDF bytes.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="input"/> is <see langword="null"/>.</exception>
+    /// <exception cref="PoliPageAuthException">The API returned 401 or 403.</exception>
+    /// <exception cref="PoliPageNotFoundException">The API returned 404 (project, template, or version not found).</exception>
+    /// <exception cref="PoliPageValidationException">The API returned 400 or 422 (invalid input).</exception>
+    /// <exception cref="PoliPageRateLimitException">The API returned 429; <see cref="PoliPageRateLimitException.RetryAfter"/> exposes the server's retry hint.</exception>
+    /// <exception cref="PoliPagePaymentRequiredException">The API returned 402 (organisation has unpaid invoices).</exception>
+    /// <exception cref="PoliPageGoneException">The API returned 410 (resource permanently removed).</exception>
+    /// <exception cref="PoliPageNetworkException">DNS, TCP, or TLS failure before the response was received.</exception>
+    /// <exception cref="PoliPageException">Any other API failure, or a per-request timeout (<see cref="PoliPageErrorCode.Timeout"/>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public async Task<byte[]> PdfAsync(
         ProjectModeInput input,
         RequestOptions? options = null,

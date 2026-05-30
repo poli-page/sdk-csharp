@@ -24,24 +24,26 @@ internal static class ErrorParsing
     internal static async Task<PoliPageException> FromResponseAsync(
         HttpResponseMessage response, CancellationToken cancellationToken)
     {
-        string? bodyText = null;
         ErrorEnvelope? envelope = null;
         try
         {
-            bodyText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(bodyText) && LooksLikeJson(bodyText))
+            var rawBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(rawBody) && LooksLikeJson(rawBody))
             {
                 // Why: Phase 8 will replace this with JsonSerializerContext (source-gen) for full
                 // AOT/trim safety. Until then, suppress IL2026/IL3050 — dynamic deserialization is
                 // only a concern for AOT-published apps, not the JIT runtime the SDK currently targets.
 #pragma warning disable IL2026, IL3050
-                envelope = JsonSerializer.Deserialize<ErrorEnvelope>(bodyText, JsonOptions);
+                envelope = JsonSerializer.Deserialize<ErrorEnvelope>(rawBody, JsonOptions);
 #pragma warning restore IL2026, IL3050
             }
         }
-        catch
+        catch (Exception e) when (e is not OperationCanceledException)
         {
-            // Swallow: parsing the body must not mask the HTTP failure.
+            // Swallow: malformed JSON, IO flakiness, or unexpected content must not mask the HTTP
+            // failure. OperationCanceledException is explicitly NOT caught here — caller cancellation
+            // (or timeout-token propagation) must escape unchanged so the transport can surface the
+            // right wrapper exception type.
         }
 
         var status = (int)response.StatusCode;

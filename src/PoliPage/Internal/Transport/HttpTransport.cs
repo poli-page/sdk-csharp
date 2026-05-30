@@ -98,14 +98,14 @@ internal sealed class HttpTransport : ITransport
 
         if (!response.IsSuccessStatusCode)
         {
-            try
+            // Why: pass CancellationToken.None to FromResponseAsync because the response body has
+            // already been buffered (HttpCompletionOption.ResponseContentRead above). Threading the
+            // linkedToken here would mean a race where the timeout-CTS fires between SendAsync
+            // returning and the error body parse running, swallowing the real HTTP failure.
+            using (response)
             {
-                var ex = await ErrorParsing.FromResponseAsync(response, linkedToken).ConfigureAwait(false);
-                throw ex;
-            }
-            finally
-            {
-                response.Dispose();
+                throw await ErrorParsing.FromResponseAsync(response, CancellationToken.None)
+                    .ConfigureAwait(false);
             }
         }
 
