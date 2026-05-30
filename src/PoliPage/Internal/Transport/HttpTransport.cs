@@ -40,6 +40,14 @@ internal sealed class HttpTransport : ITransport
         using var timeoutCts = new CancellationTokenSource(effectiveTimeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
+        using var request = BuildPostRequest(path, body, idempotencyKey, options);
+
+        return await SendAndMapErrorsAsync(request, linkedCts.Token, cancellationToken).ConfigureAwait(false);
+    }
+
+    private HttpRequestMessage BuildPostRequest(
+        string path, object body, string idempotencyKey, RequestOptions? options)
+    {
         var uri = ComposeUri(_baseAddress, path);
 
         // Why: Phase 8 will replace this with JsonSerializerContext (source-gen) for full
@@ -51,10 +59,7 @@ internal sealed class HttpTransport : ITransport
 #pragma warning restore IL2026, IL3050
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, uri)
-        {
-            Content = content,
-        };
+        var request = new HttpRequestMessage(HttpMethod.Post, uri) { Content = content };
 
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
         request.Headers.UserAgent.ParseAdd(UserAgent);
@@ -67,8 +72,44 @@ internal sealed class HttpTransport : ITransport
                 request.Headers.TryAddWithoutValidation(key, value);
         }
 
-        return await _httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, linkedCts.Token)
-            .ConfigureAwait(false);
+        return request;
+    }
+
+    private async Task<HttpResponseMessage> SendAndMapErrorsAsync(
+        HttpRequestMessage request, CancellationToken linkedToken, CancellationToken callerToken)
+    {
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, linkedToken)
+                .ConfigureAwait(false);
+        }
+        catch (HttpRequestException hre)
+        {
+            throw new PoliPageNetworkException(PoliPageErrorCode.Network, "Network error during request.", hre);
+        }
+        catch (TaskCanceledException tce) when (!callerToken.IsCancellationRequested)
+        {
+            // Why: the caller's token is not cancelled, so our internal timeout CTS fired.
+            // Surface this as a deterministic Timeout error rather than an ambiguous cancellation.
+            throw new PoliPageException(PoliPageErrorCode.Timeout, 0, "Request timed out.", innerException: tce);
+        }
+        // Caller-cancelled TaskCanceledException flows through unchanged as OperationCanceledException.
+
+        if (!response.IsSuccessStatusCode)
+        {
+            try
+            {
+                var ex = await ErrorParsing.FromResponseAsync(response, linkedToken).ConfigureAwait(false);
+                throw ex;
+            }
+            finally
+            {
+                response.Dispose();
+            }
+        }
+
+        return response;
     }
 
     // Why: `new Uri(base, "/render")` silently drops base path segments when the relative
