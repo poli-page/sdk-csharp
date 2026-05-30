@@ -62,6 +62,35 @@ public sealed class Documents
                 PoliPageErrorCode.Unknown,
                 (int)response.StatusCode,
                 "Documents.GetAsync: server returned 2xx with no JSON body."))
-            with { Downloader = _downloader };
+            with
+        { Downloader = _downloader };
+    }
+
+    /// <summary>
+    /// Soft-deletes a stored document. The presigned URL is invalidated and
+    /// subsequent <see cref="GetAsync"/> calls return 410 Gone. The bytes are
+    /// preserved on the CDN for the organisation's retention window.
+    /// </summary>
+    /// <param name="documentId">The server-issued document identifier (e.g. <c>doc_…</c>).</param>
+    /// <param name="options">Optional per-call overrides (timeout, extra headers).</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <exception cref="ArgumentException"><paramref name="documentId"/> is null, empty, or whitespace.</exception>
+    /// <exception cref="PoliPageNotFoundException">The document does not exist.</exception>
+    /// <exception cref="PoliPageGoneException">The document was already soft-deleted.</exception>
+    /// <exception cref="PoliPageException">Any other API failure.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public async Task DeleteAsync(
+        string documentId,
+        RequestOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+            throw new ArgumentException("documentId must not be null, empty, or whitespace.", nameof(documentId));
+
+        var path = $"/documents/{Uri.EscapeDataString(documentId)}";
+
+        using var response = await _transport.DeleteAsync(path, options, cancellationToken).ConfigureAwait(false);
+        // SendAndMapErrorsAsync already throws on non-2xx; nothing more to do here.
+        // The response body (if any) is discarded — the contract is "did it delete or not".
     }
 }

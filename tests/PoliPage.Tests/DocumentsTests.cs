@@ -158,4 +158,76 @@ public sealed class DocumentsTests
         await act.Should().ThrowAsync<ArgumentException>().WithParameterName("documentId");
     }
 
+    // ------------------------------------------------------------------ //
+    // DeleteAsync
+    // ------------------------------------------------------------------ //
+
+    [Fact]
+    public async Task DeleteAsync_sends_DELETE_to_documents_id()
+    {
+        using var harness = StartHarness();
+        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123").UsingDelete())
+               .RespondWith(Response.Create().WithStatusCode(204));
+
+        await harness.Client.Documents.DeleteAsync("doc_abc123");
+
+        var entry = harness.Server.LogEntries.Should().ContainSingle().Subject;
+        entry.RequestMessage.Method.Should().Be("DELETE");
+        entry.RequestMessage.Path.Should().Be("/documents/doc_abc123");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_returns_void_on_204()
+    {
+        using var harness = StartHarness();
+        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123").UsingDelete())
+               .RespondWith(Response.Create().WithStatusCode(204));
+
+        var act = async () => await harness.Client.Documents.DeleteAsync("doc_abc123");
+
+        await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_throws_PoliPageGoneException_on_410()
+    {
+        using var harness = StartHarness();
+        harness.Server.Given(Request.Create().WithPath("/documents/doc_already_gone").UsingDelete())
+               .RespondWith(Response.Create()
+                   .WithStatusCode(410)
+                   .WithHeader("Content-Type", "application/json")
+                   .WithBody("""{"code":"GONE","message":"already deleted"}"""));
+
+        var act = async () => await harness.Client.Documents.DeleteAsync("doc_already_gone");
+
+        await act.Should().ThrowAsync<PoliPageGoneException>();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_throws_PoliPageNotFoundException_on_404()
+    {
+        using var harness = StartHarness();
+        harness.Server.Given(Request.Create().WithPath("/documents/doc_missing").UsingDelete())
+               .RespondWith(Response.Create()
+                   .WithStatusCode(404)
+                   .WithHeader("Content-Type", "application/json")
+                   .WithBody("""{"code":"NOT_FOUND","message":"no such document"}"""));
+
+        var act = async () => await harness.Client.Documents.DeleteAsync("doc_missing");
+
+        await act.Should().ThrowAsync<PoliPageNotFoundException>();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task DeleteAsync_throws_ArgumentException_on_empty_id(string? id)
+    {
+        using var harness = StartHarness();
+
+        var act = async () => await harness.Client.Documents.DeleteAsync(id!);
+
+        await act.Should().ThrowAsync<ArgumentException>().WithParameterName("documentId");
+    }
 }
