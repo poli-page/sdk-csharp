@@ -327,4 +327,101 @@ public sealed class DocumentsTests
 
         await act.Should().ThrowAsync<ArgumentException>().WithParameterName("documentId");
     }
+
+    // ------------------------------------------------------------------ //
+    // ThumbnailsAsync
+    // ------------------------------------------------------------------ //
+
+    private const string SampleThumbnailsJson = """
+        {
+            "thumbnails": [
+                { "pageNumber": 1, "width": 320, "height": 452, "format": "png", "base64Data": "iVBOR..." },
+                { "pageNumber": 2, "width": 320, "height": 452, "format": "png", "base64Data": "iVBOR..." }
+            ]
+        }
+        """;
+
+    [Fact]
+    public async Task ThumbnailsAsync_returns_Thumbnail_array_from_wire_envelope()
+    {
+        using var harness = StartHarness();
+        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123/thumbnails").UsingPost())
+               .RespondWith(Response.Create()
+                   .WithStatusCode(200)
+                   .WithHeader("Content-Type", "application/json")
+                   .WithBody(SampleThumbnailsJson));
+
+        var thumbs = await harness.Client.Documents.ThumbnailsAsync(
+            "doc_abc123",
+            new ThumbnailOptions { Width = 320, Format = ThumbnailFormat.Png });
+
+        thumbs.Should().HaveCount(2);
+        thumbs[0].PageNumber.Should().Be(1);
+        thumbs[0].Width.Should().Be(320);
+        thumbs[0].Format.Should().Be("png");
+        thumbs[0].Base64Data.Should().StartWith("iVBOR");
+        thumbs[1].PageNumber.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ThumbnailsAsync_serializes_options_as_camelCase_body_with_lowercase_format()
+    {
+        using var harness = StartHarness();
+        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123/thumbnails").UsingPost())
+               .RespondWith(Response.Create()
+                   .WithStatusCode(200)
+                   .WithHeader("Content-Type", "application/json")
+                   .WithBody(SampleThumbnailsJson));
+
+        await harness.Client.Documents.ThumbnailsAsync(
+            "doc_abc123",
+            new ThumbnailOptions { Width = 320, Format = ThumbnailFormat.Jpeg });
+
+        var entry = harness.Server.LogEntries.Should().ContainSingle().Subject;
+        var body = JsonDocument.Parse(entry.RequestMessage.Body!).RootElement;
+
+        body.GetProperty("width").GetInt32().Should().Be(320);
+        body.GetProperty("format").GetString().Should().Be("jpeg",
+            "ThumbnailFormat must serialise as a camelCase lowercase string for the wire");
+    }
+
+    [Fact]
+    public async Task ThumbnailsAsync_returns_empty_list_when_envelope_has_no_thumbnails()
+    {
+        using var harness = StartHarness();
+        harness.Server.Given(Request.Create().WithPath("/documents/doc_empty/thumbnails").UsingPost())
+               .RespondWith(Response.Create()
+                   .WithStatusCode(200)
+                   .WithHeader("Content-Type", "application/json")
+                   .WithBody("{\"thumbnails\":[]}"));
+
+        var thumbs = await harness.Client.Documents.ThumbnailsAsync(
+            "doc_empty",
+            new ThumbnailOptions());
+
+        thumbs.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ThumbnailsAsync_throws_ArgumentNullException_when_options_is_null()
+    {
+        using var harness = StartHarness();
+
+        var act = async () => await harness.Client.Documents.ThumbnailsAsync("doc_abc", null!);
+
+        await act.Should().ThrowAsync<ArgumentNullException>().WithParameterName("thumbnailOptions");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ThumbnailsAsync_throws_ArgumentException_on_empty_id(string? id)
+    {
+        using var harness = StartHarness();
+
+        var act = async () => await harness.Client.Documents.ThumbnailsAsync(id!, new ThumbnailOptions());
+
+        await act.Should().ThrowAsync<ArgumentException>().WithParameterName("documentId");
+    }
 }
