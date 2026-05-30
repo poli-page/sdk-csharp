@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using PoliPage.Internal;
 
@@ -92,5 +93,56 @@ public sealed class Documents
         using var response = await _transport.DeleteAsync(path, options, cancellationToken).ConfigureAwait(false);
         // SendAndMapErrorsAsync already throws on non-2xx; nothing more to do here.
         // The response body (if any) is discarded — the contract is "did it delete or not".
+    }
+
+    /// <summary>
+    /// Fetches an HTML preview of a stored document plus the page count from the
+    /// <c>X-Document-Page-Count</c> response header.
+    /// </summary>
+    /// <param name="documentId">The server-issued document identifier (e.g. <c>doc_…</c>).</param>
+    /// <param name="options">Optional per-call overrides (timeout, extra headers).</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>A <see cref="DocumentPreviewResult"/> with the full HTML body and page count.</returns>
+    /// <exception cref="ArgumentException"><paramref name="documentId"/> is null, empty, or whitespace.</exception>
+    /// <exception cref="PoliPageNotFoundException">The document does not exist.</exception>
+    /// <exception cref="PoliPageGoneException">The document was soft-deleted.</exception>
+    /// <exception cref="PoliPageException">Any other API failure.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public async Task<DocumentPreviewResult> PreviewAsync(
+        string documentId,
+        RequestOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+            throw new ArgumentException("documentId must not be null, empty, or whitespace.", nameof(documentId));
+
+        var path = $"/documents/{Uri.EscapeDataString(documentId)}/preview";
+
+        using var response = await _transport.GetAsync(
+            path,
+            options,
+            "text/html",
+            HttpCompletionOption.ResponseContentRead,
+            cancellationToken).ConfigureAwait(false);
+
+        var html = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        var pageCount = ParseDocumentPageCount(response);
+
+        return new DocumentPreviewResult
+        {
+            Html = html,
+            PageCount = pageCount,
+        };
+    }
+
+    private static int ParseDocumentPageCount(HttpResponseMessage response)
+    {
+        if (response.Headers.TryGetValues("X-Document-Page-Count", out var values))
+        {
+            var raw = values.FirstOrDefault();
+            if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n))
+                return n;
+        }
+        return 0;
     }
 }

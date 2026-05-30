@@ -230,4 +230,101 @@ public sealed class DocumentsTests
 
         await act.Should().ThrowAsync<ArgumentException>().WithParameterName("documentId");
     }
+
+    // ------------------------------------------------------------------ //
+    // PreviewAsync
+    // ------------------------------------------------------------------ //
+
+    [Fact]
+    public async Task PreviewAsync_returns_HTML_body_and_PageCount_header()
+    {
+        using var harness = StartHarness();
+        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123/preview").UsingGet())
+               .RespondWith(Response.Create()
+                   .WithStatusCode(200)
+                   .WithHeader("Content-Type", "text/html")
+                   .WithHeader("X-Document-Page-Count", "7")
+                   .WithBody("<html><body>preview body</body></html>"));
+
+        var result = await harness.Client.Documents.PreviewAsync("doc_abc123");
+
+        result.Html.Should().Be("<html><body>preview body</body></html>");
+        result.PageCount.Should().Be(7);
+    }
+
+    [Fact]
+    public async Task PreviewAsync_returns_zero_PageCount_when_header_missing()
+    {
+        using var harness = StartHarness();
+        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123/preview").UsingGet())
+               .RespondWith(Response.Create()
+                   .WithStatusCode(200)
+                   .WithHeader("Content-Type", "text/html")
+                   .WithBody("<html></html>"));
+
+        var result = await harness.Client.Documents.PreviewAsync("doc_abc123");
+
+        result.PageCount.Should().Be(0, "missing X-Document-Page-Count must not throw");
+    }
+
+    [Fact]
+    public async Task PreviewAsync_returns_zero_PageCount_when_header_malformed()
+    {
+        using var harness = StartHarness();
+        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123/preview").UsingGet())
+               .RespondWith(Response.Create()
+                   .WithStatusCode(200)
+                   .WithHeader("Content-Type", "text/html")
+                   .WithHeader("X-Document-Page-Count", "not-a-number")
+                   .WithBody("<html></html>"));
+
+        var result = await harness.Client.Documents.PreviewAsync("doc_abc123");
+
+        result.PageCount.Should().Be(0, "malformed header value must not throw");
+    }
+
+    [Fact]
+    public async Task PreviewAsync_sends_Accept_text_html()
+    {
+        using var harness = StartHarness();
+        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123/preview").UsingGet())
+               .RespondWith(Response.Create()
+                   .WithStatusCode(200)
+                   .WithHeader("Content-Type", "text/html")
+                   .WithHeader("X-Document-Page-Count", "1")
+                   .WithBody("<html></html>"));
+
+        await harness.Client.Documents.PreviewAsync("doc_abc123");
+
+        var entry = harness.Server.LogEntries.Should().ContainSingle().Subject;
+        entry.RequestMessage.Headers!["Accept"].Should().Contain("text/html");
+    }
+
+    [Fact]
+    public async Task PreviewAsync_throws_PoliPageNotFoundException_on_404()
+    {
+        using var harness = StartHarness();
+        harness.Server.Given(Request.Create().WithPath("/documents/doc_missing/preview").UsingGet())
+               .RespondWith(Response.Create()
+                   .WithStatusCode(404)
+                   .WithHeader("Content-Type", "application/json")
+                   .WithBody("""{"code":"DOCUMENT_NOT_FOUND","message":"no such document"}"""));
+
+        var act = async () => await harness.Client.Documents.PreviewAsync("doc_missing");
+
+        await act.Should().ThrowAsync<PoliPageNotFoundException>();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task PreviewAsync_throws_ArgumentException_on_empty_id(string? id)
+    {
+        using var harness = StartHarness();
+
+        var act = async () => await harness.Client.Documents.PreviewAsync(id!);
+
+        await act.Should().ThrowAsync<ArgumentException>().WithParameterName("documentId");
+    }
 }
