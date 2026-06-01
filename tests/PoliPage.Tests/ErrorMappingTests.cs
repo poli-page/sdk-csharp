@@ -61,7 +61,7 @@ public sealed class ErrorMappingTests
         if (delayMs > 0)
             response = response.WithDelay(TimeSpan.FromMilliseconds(delayMs));
 
-        server.Given(Request.Create().WithPath("/render").UsingPost())
+        server.Given(Request.Create().WithPath("/v1/render").UsingPost())
               .RespondWith(response);
     }
 
@@ -313,7 +313,7 @@ public sealed class ErrorMappingTests
     {
         using var harness = StartServerAndClient();
         // No body — just the status code.
-        harness.Server.Given(Request.Create().WithPath("/render").UsingPost())
+        harness.Server.Given(Request.Create().WithPath("/v1/render").UsingPost())
                       .RespondWith(Response.Create().WithStatusCode(500));
 
         var act = async () => await CallRenderAsync(harness.Client);
@@ -455,7 +455,7 @@ public sealed class ErrorMappingTests
         using var harness = StartServerAndClient();
 
         // Server delays 2s; client times out after 150ms.
-        harness.Server.Given(Request.Create().WithPath("/render").UsingPost())
+        harness.Server.Given(Request.Create().WithPath("/v1/render").UsingPost())
                       .RespondWith(Response.Create()
                           .WithStatusCode(200)
                           .WithHeader("Content-Type", "application/pdf")

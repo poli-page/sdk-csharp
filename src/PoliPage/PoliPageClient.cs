@@ -113,7 +113,7 @@ public sealed class PoliPageClient : IDisposable
             options.RetryDelay,
             options.OnRetry,
             jitter);
-        _render = new Render(transport, DownloadAsync);
+        _render = new Render(transport, DownloadAsync, DownloadStreamAsync);
         _documents = new Documents(transport, DownloadAsync);
     }
 
@@ -151,7 +151,8 @@ public sealed class PoliPageClient : IDisposable
 
     /// <summary>
     /// Fetches the bytes at <paramref name="url"/> via the SDK's dedicated, header-less
-    /// download transport. Used by <see cref="DocumentDescriptor.DownloadPdfAsync"/>.
+    /// download transport. Used by <see cref="DocumentDescriptor.DownloadPdfAsync"/> and
+    /// by <see cref="Render.PdfAsync"/> for the post-render PDF fetch step.
     /// </summary>
     internal async Task<byte[]> DownloadAsync(string url, CancellationToken cancellationToken)
     {
@@ -160,19 +161,53 @@ public sealed class PoliPageClient : IDisposable
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
             .ConfigureAwait(false);
 
-        if (!response.IsSuccessStatusCode)
-        {
-            var requestId = response.Headers.TryGetValues("X-Request-Id", out var v)
-                ? v.FirstOrDefault()
-                : null;
-            throw new PoliPageDownloadException(
-                PoliPageErrorCode.DownloadFailed,
-                (int)response.StatusCode,
-                $"Presigned download failed: HTTP {(int)response.StatusCode}",
-                requestId);
-        }
+        await ThrowIfDownloadFailedAsync(response).ConfigureAwait(false);
 
         return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Streaming variant of <see cref="DownloadAsync"/>. Returns a <see cref="Stream"/>
+    /// that owns the underlying <see cref="HttpResponseMessage"/> so the caller can
+    /// dispose both with a single <c>using</c>. Used by <see cref="Render.PdfStreamAsync"/>.
+    /// </summary>
+    internal async Task<Stream> DownloadStreamAsync(string url, CancellationToken cancellationToken)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        HttpResponseMessage? response = null;
+        try
+        {
+            response = await _downloadHttp
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                .ConfigureAwait(false);
+
+            await ThrowIfDownloadFailedAsync(response).ConfigureAwait(false);
+
+            var bodyStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            var owned = new ResponseOwnedStream(bodyStream, response);
+            response = null; // ownership transferred to the stream wrapper
+            return owned;
+        }
+        finally
+        {
+            response?.Dispose();
+            request.Dispose();
+        }
+    }
+
+    private static Task ThrowIfDownloadFailedAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode)
+            return Task.CompletedTask;
+
+        var requestId = response.Headers.TryGetValues("X-Request-Id", out var v)
+            ? v.FirstOrDefault()
+            : null;
+        throw new PoliPageDownloadException(
+            PoliPageErrorCode.DownloadFailed,
+            (int)response.StatusCode,
+            $"Presigned download failed: HTTP {(int)response.StatusCode}",
+            requestId);
     }
 
     /// <summary>

@@ -77,24 +77,86 @@ public sealed class RetryHandlerTests
 
     /// <summary>
     /// Stubs WireMock to return <paramref name="errorStatus"/> on the first call and
-    /// 200 (PDF bytes) on the second call, using the built-in scenario state machine.
+    /// 200 with a JSON descriptor on the second call, plus the presigned storage GET
+    /// that PdfAsync follows to fetch the actual bytes.
     /// </summary>
     private static void StubFailThenSucceed(WireMockServer server, int errorStatus, string? retryAfterHeader = null)
     {
         const string Scenario = "fail-then-succeed";
+        const string DocumentId = "doc_retry";
+        var presignedUrl = $"{server.Url}/storage/{DocumentId}.pdf";
+        var descriptorJson = $$"""
+            {
+                "documentId": "{{DocumentId}}",
+                "organizationId": "org_xyz",
+                "environment": "test",
+                "format": "pdf",
+                "pageCount": 1,
+                "sizeBytes": 100,
+                "presignedPdfUrl": "{{presignedUrl}}"
+            }
+            """;
 
         var errorResponse = Response.Create().WithStatusCode(errorStatus);
         if (retryAfterHeader is not null)
             errorResponse = errorResponse.WithHeader("Retry-After", retryAfterHeader);
 
-        server.Given(Request.Create().WithPath("/render").UsingPost())
+        server.Given(Request.Create().WithPath("/v1/render").UsingPost())
               .InScenario(Scenario)
               .WillSetStateTo(ScenarioStep2)
               .RespondWith(errorResponse);
 
-        server.Given(Request.Create().WithPath("/render").UsingPost())
+        server.Given(Request.Create().WithPath("/v1/render").UsingPost())
               .InScenario(Scenario)
               .WhenStateIs(ScenarioStep2)
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/json")
+                  .WithBody(descriptorJson));
+
+        server.Given(Request.Create().WithPath($"/storage/{DocumentId}.pdf").UsingGet())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/pdf")
+                  .WithBody(PdfMagicBytes));
+    }
+
+    /// <summary>
+    /// Filters WireMock's request log to just the POSTs to the render endpoint. PdfAsync
+    /// follows up with a GET to the presigned storage URL on success, which inflates the
+    /// raw LogEntries count beyond what most retry assertions care about.
+    /// </summary>
+    private static List<WireMock.Logging.ILogEntry> PostLogEntries(WireMockServer server)
+        => server.LogEntries.Where(e => e.RequestMessage.Method == "POST").ToList();
+
+    /// <summary>
+    /// Stubs the two-step render flow with a fixed success response on every call:
+    /// POST /v1/render → JSON descriptor; GET /storage/{id}.pdf → PDF bytes.
+    /// Used by tests that need a custom HTTP handler (network-fail, timeout) instead
+    /// of WireMock's scenario state machine to gate the failure.
+    /// </summary>
+    private static void StubRenderJsonAndStorage(WireMockServer server, string documentId = "doc_retry")
+    {
+        var presignedUrl = $"{server.Url}/storage/{documentId}.pdf";
+        var descriptorJson = $$"""
+            {
+                "documentId": "{{documentId}}",
+                "organizationId": "org_xyz",
+                "environment": "test",
+                "format": "pdf",
+                "pageCount": 1,
+                "sizeBytes": 100,
+                "presignedPdfUrl": "{{presignedUrl}}"
+            }
+            """;
+
+        server.Given(Request.Create().WithPath("/v1/render").UsingPost())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/json")
+                  .WithBody(descriptorJson));
+
+        server.Given(Request.Create().WithPath($"/storage/{documentId}.pdf").UsingGet())
               .RespondWith(Response.Create()
                   .WithStatusCode(200)
                   .WithHeader("Content-Type", "application/pdf")
@@ -115,7 +177,7 @@ public sealed class RetryHandlerTests
 
         result.Should().NotBeEmpty();
         result[..4].Should().Equal(0x25, 0x50, 0x44, 0x46); // %PDF
-        harness.Server.LogEntries.Should().HaveCount(2, "one initial attempt + one retry");
+        PostLogEntries(harness.Server).Should().HaveCount(2, "one initial attempt + one retry");
     }
 
     // ------------------------------------------------------------------ //
@@ -131,7 +193,7 @@ public sealed class RetryHandlerTests
         var result = await RenderAsync(harness.Client);
 
         result.Should().NotBeEmpty();
-        harness.Server.LogEntries.Should().HaveCount(2, "one initial attempt + one retry");
+        PostLogEntries(harness.Server).Should().HaveCount(2, "one initial attempt + one retry");
     }
 
     // ------------------------------------------------------------------ //
@@ -143,13 +205,13 @@ public sealed class RetryHandlerTests
     {
         // MaxRetries=2 → 3 total attempts (initial + 2 retries).
         using var harness = StartHarness(maxRetries: 2);
-        harness.Server.Given(Request.Create().WithPath("/render").UsingPost())
+        harness.Server.Given(Request.Create().WithPath("/v1/render").UsingPost())
                .RespondWith(Response.Create().WithStatusCode(503));
 
         var act = async () => await RenderAsync(harness.Client);
 
         await act.Should().ThrowAsync<PoliPageException>();
-        harness.Server.LogEntries.Should().HaveCount(3, "1 initial + 2 retries before giving up");
+        PostLogEntries(harness.Server).Should().HaveCount(3, "1 initial + 2 retries before giving up");
     }
 
     // ------------------------------------------------------------------ //
@@ -160,7 +222,7 @@ public sealed class RetryHandlerTests
     public async Task Does_not_retry_on_400()
     {
         using var harness = StartHarness(maxRetries: 5);
-        harness.Server.Given(Request.Create().WithPath("/render").UsingPost())
+        harness.Server.Given(Request.Create().WithPath("/v1/render").UsingPost())
                .RespondWith(Response.Create()
                    .WithStatusCode(400)
                    .WithHeader("Content-Type", "application/json")
@@ -169,7 +231,7 @@ public sealed class RetryHandlerTests
         var act = async () => await RenderAsync(harness.Client);
 
         await act.Should().ThrowAsync<PoliPageValidationException>();
-        harness.Server.LogEntries.Should().HaveCount(1, "400 must not trigger any retry");
+        PostLogEntries(harness.Server).Should().HaveCount(1, "400 must not trigger any retry");
     }
 
     // ------------------------------------------------------------------ //
@@ -180,7 +242,7 @@ public sealed class RetryHandlerTests
     public async Task Does_not_retry_on_404()
     {
         using var harness = StartHarness(maxRetries: 5);
-        harness.Server.Given(Request.Create().WithPath("/render").UsingPost())
+        harness.Server.Given(Request.Create().WithPath("/v1/render").UsingPost())
                .RespondWith(Response.Create()
                    .WithStatusCode(404)
                    .WithHeader("Content-Type", "application/json")
@@ -189,7 +251,7 @@ public sealed class RetryHandlerTests
         var act = async () => await RenderAsync(harness.Client);
 
         await act.Should().ThrowAsync<PoliPageNotFoundException>();
-        harness.Server.LogEntries.Should().HaveCount(1, "404 must not trigger any retry");
+        PostLogEntries(harness.Server).Should().HaveCount(1, "404 must not trigger any retry");
     }
 
     // ------------------------------------------------------------------ //
@@ -202,11 +264,7 @@ public sealed class RetryHandlerTests
         // A custom DelegatingHandler that throws HttpRequestException on the first send,
         // then forwards to WireMock on subsequent sends.
         using var server = WireMockServer.Start();
-        server.Given(Request.Create().WithPath("/render").UsingPost())
-              .RespondWith(Response.Create()
-                  .WithStatusCode(200)
-                  .WithHeader("Content-Type", "application/pdf")
-                  .WithBody(PdfMagicBytes));
+        StubRenderJsonAndStorage(server);
 
         var callCount = 0;
         var networkFailHandler = new ThrowOnceHandler(
@@ -253,11 +311,7 @@ public sealed class RetryHandlerTests
         // first send (simulating our timeout CTS firing) and forwards subsequent sends
         // to WireMock unchanged.
         using var server = WireMockServer.Start();
-        server.Given(Request.Create().WithPath("/render").UsingPost())
-              .RespondWith(Response.Create()
-                  .WithStatusCode(200)
-                  .WithHeader("Content-Type", "application/pdf")
-                  .WithBody(PdfMagicBytes));
+        StubRenderJsonAndStorage(server);
 
         var handler = new ThrowOnceHandler(
             inner: new HttpClientHandler(),
@@ -289,7 +343,7 @@ public sealed class RetryHandlerTests
     public async Task Idempotency_Key_is_same_across_retries()
     {
         using var harness = StartHarness(maxRetries: 2);
-        harness.Server.Given(Request.Create().WithPath("/render").UsingPost())
+        harness.Server.Given(Request.Create().WithPath("/v1/render").UsingPost())
                .RespondWith(Response.Create()
                    .WithStatusCode(500));
 
@@ -353,7 +407,7 @@ public sealed class RetryHandlerTests
             },
             jitter: () => 1.0);
 
-        harness.Server.Given(Request.Create().WithPath("/render").UsingPost())
+        harness.Server.Given(Request.Create().WithPath("/v1/render").UsingPost())
                .RespondWith(Response.Create()
                    .WithStatusCode(429)
                    .WithHeader("Retry-After", "120"));
@@ -379,7 +433,7 @@ public sealed class RetryHandlerTests
             onRetry: evt => retryEvents.Add(evt),
             jitter: () => 1.0);
 
-        harness.Server.Given(Request.Create().WithPath("/render").UsingPost())
+        harness.Server.Given(Request.Create().WithPath("/v1/render").UsingPost())
                .RespondWith(Response.Create().WithStatusCode(500));
 
         var act = async () => await RenderAsync(harness.Client);
@@ -404,7 +458,7 @@ public sealed class RetryHandlerTests
             maxRetries: 2,
             onRetry: evt => events.Add(evt));
 
-        harness.Server.Given(Request.Create().WithPath("/render").UsingPost())
+        harness.Server.Given(Request.Create().WithPath("/v1/render").UsingPost())
                .RespondWith(Response.Create().WithStatusCode(503));
 
         var act = async () => await RenderAsync(harness.Client);
@@ -442,7 +496,7 @@ public sealed class RetryHandlerTests
         var result = await RenderAsync(harness.Client);
 
         result.Should().NotBeEmpty();
-        harness.Server.LogEntries.Should().HaveCount(2);
+        PostLogEntries(harness.Server).Should().HaveCount(2);
     }
 
     // ------------------------------------------------------------------ //
@@ -455,7 +509,7 @@ public sealed class RetryHandlerTests
         using var harness = StartHarness(maxRetries: 5);
 
         // Server holds the response for 1s so cancellation fires mid-send.
-        harness.Server.Given(Request.Create().WithPath("/render").UsingPost())
+        harness.Server.Given(Request.Create().WithPath("/v1/render").UsingPost())
                .RespondWith(Response.Create()
                    .WithStatusCode(200)
                    .WithHeader("Content-Type", "application/pdf")
@@ -473,7 +527,7 @@ public sealed class RetryHandlerTests
         // server.LogEntries.Count because WireMock may or may not log requests that
         // were aborted mid-flight; that's an implementation detail of the mock, not
         // a property of our retry logic.
-        harness.Server.LogEntries.Should().HaveCountLessThanOrEqualTo(1);
+        PostLogEntries(harness.Server).Should().HaveCountLessThanOrEqualTo(1);
     }
 
     // ------------------------------------------------------------------ //
@@ -484,13 +538,13 @@ public sealed class RetryHandlerTests
     public async Task MaxRetries_zero_disables_retry_entirely()
     {
         using var harness = StartHarness(maxRetries: 0);
-        harness.Server.Given(Request.Create().WithPath("/render").UsingPost())
+        harness.Server.Given(Request.Create().WithPath("/v1/render").UsingPost())
                .RespondWith(Response.Create().WithStatusCode(500));
 
         var act = async () => await RenderAsync(harness.Client);
         await act.Should().ThrowAsync<PoliPageException>();
 
-        harness.Server.LogEntries.Should().HaveCount(1, "MaxRetries=0 means no retries at all");
+        PostLogEntries(harness.Server).Should().HaveCount(1, "MaxRetries=0 means no retries at all");
     }
 }
 

@@ -46,7 +46,7 @@ public sealed class Documents
         if (string.IsNullOrWhiteSpace(documentId))
             throw new ArgumentException("documentId must not be null, empty, or whitespace.", nameof(documentId));
 
-        var path = $"/documents/{Uri.EscapeDataString(documentId)}";
+        var path = $"/v1/documents/{Uri.EscapeDataString(documentId)}";
 
         using var response = await _transport.GetAsync(
             path,
@@ -88,7 +88,7 @@ public sealed class Documents
         if (string.IsNullOrWhiteSpace(documentId))
             throw new ArgumentException("documentId must not be null, empty, or whitespace.", nameof(documentId));
 
-        var path = $"/documents/{Uri.EscapeDataString(documentId)}";
+        var path = $"/v1/documents/{Uri.EscapeDataString(documentId)}";
 
         using var response = await _transport.DeleteAsync(path, options, cancellationToken).ConfigureAwait(false);
         // SendAndMapErrorsAsync already throws on non-2xx; nothing more to do here.
@@ -116,7 +116,7 @@ public sealed class Documents
         if (string.IsNullOrWhiteSpace(documentId))
             throw new ArgumentException("documentId must not be null, empty, or whitespace.", nameof(documentId));
 
-        var path = $"/documents/{Uri.EscapeDataString(documentId)}/preview";
+        var path = $"/v1/documents/{Uri.EscapeDataString(documentId)}/preview";
 
         using var response = await _transport.GetAsync(
             path,
@@ -158,7 +158,7 @@ public sealed class Documents
             throw new ArgumentException("documentId must not be null, empty, or whitespace.", nameof(documentId));
         ArgumentNullException.ThrowIfNull(thumbnailOptions);
 
-        var path = $"/documents/{Uri.EscapeDataString(documentId)}/thumbnails";
+        var path = $"/v1/documents/{Uri.EscapeDataString(documentId)}/thumbnails";
         var idempotencyKey = options?.IdempotencyKey ?? Guid.NewGuid().ToString();
 
         using var response = await _transport.PostAsync(

@@ -40,16 +40,58 @@ public sealed class RenderTests
         return new TestHarness(server, client);
     }
 
-    /// <summary>Registers a default POST /render stub that returns a %PDF-1.4 body.</summary>
-    private static void StubRender(WireMockServer server, byte[]? body = null)
+    /// <summary>
+    /// Registers two stubs that simulate the deployed API's render flow:
+    /// 1. <c>POST /v1/render</c> → JSON <see cref="DocumentDescriptor"/> with a
+    ///    <c>presignedPdfUrl</c> pointing back at the same WireMock instance.
+    /// 2. <c>GET /storage/{documentId}.pdf</c> → the actual PDF bytes.
+    ///
+    /// This mirrors the real two-step pattern: the API always returns a descriptor,
+    /// the PDF bytes are fetched from the presigned URL via the header-less download
+    /// transport. See sdk-node/src/render.ts:78-114 for the reference flow.
+    /// </summary>
+    private static void StubRender(WireMockServer server, byte[]? body = null, string documentId = "doc_abc123")
     {
-        server.Given(
-            Request.Create().WithPath("/render").UsingPost())
-        .RespondWith(
-            Response.Create()
-                .WithStatusCode(200)
-                .WithHeader("Content-Type", "application/pdf")
-                .WithBody(body ?? PdfMagicBytes));
+        var presignedUrl = $"{server.Url}/storage/{documentId}.pdf";
+        var descriptorJson = $$"""
+            {
+                "documentId": "{{documentId}}",
+                "organizationId": "org_xyz",
+                "projectSlug": "billing",
+                "templateSlug": "invoice",
+                "version": "1.0.0",
+                "environment": "test",
+                "format": "pdf",
+                "pageCount": 1,
+                "sizeBytes": 100,
+                "presignedPdfUrl": "{{presignedUrl}}"
+            }
+            """;
+
+        server.Given(Request.Create().WithPath("/v1/render").UsingPost())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/json")
+                  .WithBody(descriptorJson));
+
+        server.Given(Request.Create().WithPath($"/storage/{documentId}.pdf").UsingGet())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/pdf")
+                  .WithBody(body ?? PdfMagicBytes));
+    }
+
+    /// <summary>
+    /// Returns the single POST log entry from the WireMock server. PdfAsync /
+    /// PdfStreamAsync now issue two requests (POST /v1/render + GET storage),
+    /// so callers asserting on the POST need to filter.
+    /// </summary>
+    private static WireMock.Logging.ILogEntry PostEntry(WireMockServer server)
+    {
+        return server.LogEntries
+            .Where(e => e.RequestMessage.Method == "POST")
+            .Should().ContainSingle("there should be exactly one POST request to the API")
+            .Subject;
     }
 
     private static ProjectModeInput DefaultInput() => new()
@@ -100,9 +142,9 @@ public sealed class RenderTests
 
         await client.Render.PdfAsync(DefaultInput());
 
-        var entry = server.LogEntries.Should().ContainSingle().Subject;
+        var entry = PostEntry(server);
         entry.RequestMessage.Method.Should().Be("POST");
-        entry.RequestMessage.Path.Should().Be("/render");
+        entry.RequestMessage.Path.Should().Be("/v1/render");
     }
 
     // ------------------------------------------------------------------ //
@@ -118,7 +160,7 @@ public sealed class RenderTests
 
         await client.Render.PdfAsync(DefaultInput());
 
-        var entry = server.LogEntries.Should().ContainSingle().Subject;
+        var entry = PostEntry(server);
         var value = GetSingleHeader(entry.RequestMessage.Headers!, "Authorization");
         value.Should().Be("Bearer pp_test_unit");
     }
@@ -136,27 +178,30 @@ public sealed class RenderTests
 
         await client.Render.PdfAsync(DefaultInput());
 
-        var entry = server.LogEntries.Should().ContainSingle().Subject;
+        var entry = PostEntry(server);
         var ua = GetSingleHeader(entry.RequestMessage.Headers!, "User-Agent");
         ua.Should().StartWith("poli-page-sdk-dotnet/");
     }
 
     // ------------------------------------------------------------------ //
-    // 5. Accept: application/pdf
+    // 5. Accept: application/json on the POST (the API always returns a descriptor)
     // ------------------------------------------------------------------ //
 
     [Fact]
-    public async Task PdfAsync_sends_Accept_application_pdf()
+    public async Task PdfAsync_sends_Accept_application_json_on_render_POST()
     {
+        // The Poli Page API's /v1/render endpoint always returns a JSON DocumentDescriptor;
+        // the PDF bytes come from the subsequent presigned-URL fetch. Sending
+        // Accept: application/json on the POST matches that contract.
         using var harness = StartServerAndClient();
         var (server, client) = harness;
         StubRender(server);
 
         await client.Render.PdfAsync(DefaultInput());
 
-        var entry = server.LogEntries.Should().ContainSingle().Subject;
+        var entry = PostEntry(server);
         entry.RequestMessage.Headers.Should().ContainKey("Accept");
-        entry.RequestMessage.Headers!["Accept"].Should().Contain("application/pdf");
+        entry.RequestMessage.Headers!["Accept"].Should().Contain("application/json");
     }
 
     // ------------------------------------------------------------------ //
@@ -172,7 +217,7 @@ public sealed class RenderTests
 
         await client.Render.PdfAsync(DefaultInput());
 
-        var entry = server.LogEntries.Should().ContainSingle().Subject;
+        var entry = PostEntry(server);
         var ct = GetSingleHeader(entry.RequestMessage.Headers!, "Content-Type");
         ct.Should().StartWith("application/json");
     }
@@ -190,7 +235,7 @@ public sealed class RenderTests
 
         await client.Render.PdfAsync(DefaultInput());
 
-        var entry = server.LogEntries.Should().ContainSingle().Subject;
+        var entry = PostEntry(server);
         var key = GetSingleHeader(entry.RequestMessage.Headers!, "Idempotency-Key");
         Guid.TryParse(key, out var parsed).Should().BeTrue("the auto-generated key must be a valid UUID");
         parsed.Should().NotBe(Guid.Empty);
@@ -209,7 +254,7 @@ public sealed class RenderTests
 
         await client.Render.PdfAsync(DefaultInput(), new RequestOptions { IdempotencyKey = "inv-INV-001" });
 
-        var entry = server.LogEntries.Should().ContainSingle().Subject;
+        var entry = PostEntry(server);
         var key = GetSingleHeader(entry.RequestMessage.Headers!, "Idempotency-Key");
         key.Should().Be("inv-INV-001");
     }
@@ -235,7 +280,7 @@ public sealed class RenderTests
 
         await client.Render.PdfAsync(input);
 
-        var entry = server.LogEntries.Should().ContainSingle().Subject;
+        var entry = PostEntry(server);
         var rawBody = entry.RequestMessage.Body;
         rawBody.Should().NotBeNullOrEmpty("request must have a JSON body");
         var body = JsonDocument.Parse(rawBody!).RootElement;
@@ -293,7 +338,7 @@ public sealed class RenderTests
         var (server, client) = harness;
 
         // Server stub holds the response for 2s so cancellation fires during the send.
-        server.Given(Request.Create().WithPath("/render").UsingPost())
+        server.Given(Request.Create().WithPath("/v1/render").UsingPost())
               .RespondWith(Response.Create()
                   .WithStatusCode(200)
                   .WithHeader("Content-Type", "application/pdf")
@@ -326,7 +371,7 @@ public sealed class RenderTests
                 Headers = new Dictionary<string, string> { ["X-Trace-Id"] = "abc" },
             });
 
-        var entry = server.LogEntries.Should().ContainSingle().Subject;
+        var entry = PostEntry(server);
         var value = GetSingleHeader(entry.RequestMessage.Headers!, "X-Trace-Id");
         value.Should().Be("abc");
     }
@@ -358,23 +403,43 @@ public sealed class RenderTests
         // Act
         var pdf = await client.Render.PdfAsync(DefaultInput());
 
-        // Assert: WireMock received the request (SDK used the correct base address)
+        // Assert: WireMock received the POST (SDK used the correct base address).
+        // PdfAsync issues POST /v1/render + GET /storage/... so two entries are expected;
+        // we filter to the POST as the signal that the API base address was honored.
         pdf[..4].Should().Equal(0x25, 0x50, 0x44, 0x46); // %PDF
-        server.LogEntries.Should().ContainSingle("the request should have been routed to the SDK base URL");
+        PostEntry(server).RequestMessage.Path.Should().Be("/v1/render");
     }
 
     // ------------------------------------------------------------------ //
-    // 14. Versioned base URL preserves the path prefix
+    // 14. Base URL with a path prefix (e.g. reverse-proxy mount) is preserved
     // ------------------------------------------------------------------ //
 
     [Fact]
-    public async Task PdfAsync_preserves_base_path_prefix_when_BaseUrl_is_versioned()
+    public async Task PdfAsync_preserves_base_path_prefix_when_BaseUrl_includes_a_path()
     {
-        // Why: `new Uri(base, "/render")` silently drops base path segments because the
+        // Why: `new Uri(base, "/v1/render")` silently drops base path segments because the
         // leading '/' makes the relative absolute (RFC 3986 §5.2). HttpTransport.ComposeUri
-        // must normalise so a versioned base URL routes to /v1/render, not /render.
+        // must normalise so a base URL like `https://proxy/api/` correctly composes to
+        // `https://proxy/api/v1/render` rather than `https://proxy/v1/render`.
         using var server = WireMockServer.Start();
-        server.Given(Request.Create().WithPath("/v1/render").UsingPost())
+        var presignedUrl = $"{server.Url}/api/storage/doc_abc123.pdf";
+        var descriptorJson = $$"""
+            {
+                "documentId": "doc_abc123",
+                "organizationId": "org_xyz",
+                "environment": "test",
+                "format": "pdf",
+                "pageCount": 1,
+                "sizeBytes": 100,
+                "presignedPdfUrl": "{{presignedUrl}}"
+            }
+            """;
+        server.Given(Request.Create().WithPath("/api/v1/render").UsingPost())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/json")
+                  .WithBody(descriptorJson));
+        server.Given(Request.Create().WithPath("/api/storage/doc_abc123.pdf").UsingGet())
               .RespondWith(Response.Create()
                   .WithStatusCode(200)
                   .WithHeader("Content-Type", "application/pdf")
@@ -383,14 +448,13 @@ public sealed class RenderTests
         using var client = new PoliPageClient(new PoliPageClientOptions
         {
             ApiKey = "pp_test_unit",
-            BaseUrl = new Uri(server.Url + "/v1/"),
+            BaseUrl = new Uri(server.Url + "/api/"),
         });
 
         var pdf = await client.Render.PdfAsync(DefaultInput());
 
         pdf[..4].Should().Equal(0x25, 0x50, 0x44, 0x46);
-        var entry = server.LogEntries.Should().ContainSingle().Subject;
-        entry.RequestMessage.Path.Should().Be("/v1/render");
+        PostEntry(server).RequestMessage.Path.Should().Be("/api/v1/render");
     }
 
     // ------------------------------------------------------------------ //
@@ -438,7 +502,7 @@ public sealed class RenderTests
     {
         using var harness = StartServerAndClient();
         var (server, _) = harness;
-        server.Given(Request.Create().WithPath("/render").UsingPost())
+        server.Given(Request.Create().WithPath("/v1/render").UsingPost())
               .RespondWith(Response.Create()
                   .WithStatusCode(401)
                   .WithHeader("Content-Type", "application/json")
@@ -496,7 +560,7 @@ public sealed class RenderTests
     {
         using var harness = StartServerAndClient();
         var (server, client) = harness;
-        server.Given(Request.Create().WithPath("/render").UsingPost())
+        server.Given(Request.Create().WithPath("/v1/render").UsingPost())
               .RespondWith(Response.Create()
                   .WithStatusCode(200)
                   .WithHeader("Content-Type", "application/json")
@@ -517,7 +581,7 @@ public sealed class RenderTests
     {
         using var harness = StartServerAndClient();
         var (server, client) = harness;
-        server.Given(Request.Create().WithPath("/render").UsingPost())
+        server.Given(Request.Create().WithPath("/v1/render").UsingPost())
               .RespondWith(Response.Create()
                   .WithStatusCode(200)
                   .WithHeader("Content-Type", "application/json")
@@ -525,7 +589,7 @@ public sealed class RenderTests
 
         await client.Render.DocumentAsync(DefaultInput());
 
-        var entry = server.LogEntries.Should().ContainSingle().Subject;
+        var entry = PostEntry(server);
         entry.RequestMessage.Headers!["Accept"].Should().Contain("application/json");
         entry.RequestMessage.Headers["Accept"].Should().NotContain("application/pdf");
     }
@@ -554,7 +618,7 @@ public sealed class RenderTests
         var descriptorJson = SampleDescriptorJson.Replace(
             "https://placeholder.invalid/doc_abc123.pdf", presignedUrl, StringComparison.Ordinal);
 
-        server.Given(Request.Create().WithPath("/render").UsingPost())
+        server.Given(Request.Create().WithPath("/v1/render").UsingPost())
               .RespondWith(Response.Create()
                   .WithStatusCode(200)
                   .WithHeader("Content-Type", "application/json")
@@ -589,7 +653,7 @@ public sealed class RenderTests
         var descriptorJson = SampleDescriptorJson.Replace(
             "https://placeholder.invalid/doc_abc123.pdf", presignedUrl, StringComparison.Ordinal);
 
-        server.Given(Request.Create().WithPath("/render").UsingPost())
+        server.Given(Request.Create().WithPath("/v1/render").UsingPost())
               .RespondWith(Response.Create()
                   .WithStatusCode(200)
                   .WithHeader("Content-Type", "application/json")
@@ -656,7 +720,7 @@ public sealed class RenderTests
     {
         using var harness = StartServerAndClient();
         var (server, client) = harness;
-        server.Given(Request.Create().WithPath("/preview").UsingPost())
+        server.Given(Request.Create().WithPath("/v1/render/preview").UsingPost())
               .RespondWith(Response.Create()
                   .WithStatusCode(200)
                   .WithHeader("Content-Type", "application/json")
@@ -675,7 +739,7 @@ public sealed class RenderTests
     {
         using var harness = StartServerAndClient();
         var (server, client) = harness;
-        server.Given(Request.Create().WithPath("/preview").UsingPost())
+        server.Given(Request.Create().WithPath("/v1/render/preview").UsingPost())
               .RespondWith(Response.Create()
                   .WithStatusCode(200)
                   .WithHeader("Content-Type", "application/json")
@@ -693,7 +757,7 @@ public sealed class RenderTests
     {
         using var harness = StartServerAndClient();
         var (server, client) = harness;
-        server.Given(Request.Create().WithPath("/preview").UsingPost())
+        server.Given(Request.Create().WithPath("/v1/render/preview").UsingPost())
               .RespondWith(Response.Create()
                   .WithStatusCode(200)
                   .WithHeader("Content-Type", "application/json")
@@ -701,8 +765,8 @@ public sealed class RenderTests
 
         await client.Render.PreviewAsync(DefaultInput());
 
-        var entry = server.LogEntries.Should().ContainSingle().Subject;
-        entry.RequestMessage.Path.Should().Be("/preview");
+        var entry = PostEntry(server);
+        entry.RequestMessage.Path.Should().Be("/v1/render/preview");
         entry.RequestMessage.Headers!["Accept"].Should().Contain("application/json");
     }
 
@@ -799,7 +863,7 @@ public sealed class RenderTests
         var descriptorJson = SampleDescriptorJson.Replace(
             "https://placeholder.invalid/doc_abc123.pdf", presignedUrl, StringComparison.Ordinal);
 
-        server.Given(Request.Create().WithPath("/render").UsingPost())
+        server.Given(Request.Create().WithPath("/v1/render").UsingPost())
               .RespondWith(Response.Create()
                   .WithStatusCode(200)
                   .WithHeader("Content-Type", "application/json")

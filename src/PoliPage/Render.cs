@@ -11,16 +11,21 @@ public sealed class Render
 {
     private readonly ITransport _transport;
     private readonly Func<string, CancellationToken, Task<byte[]>> _downloader;
+    private readonly Func<string, CancellationToken, Task<Stream>> _streamDownloader;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    internal Render(ITransport transport, Func<string, CancellationToken, Task<byte[]>> downloader)
+    internal Render(
+        ITransport transport,
+        Func<string, CancellationToken, Task<byte[]>> downloader,
+        Func<string, CancellationToken, Task<Stream>> streamDownloader)
     {
         _transport = transport;
         _downloader = downloader;
+        _streamDownloader = streamDownloader;
     }
 
     /// <summary>
@@ -47,18 +52,10 @@ public sealed class Render
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        var idempotencyKey = options?.IdempotencyKey ?? Guid.NewGuid().ToString();
-
-        using var response = await _transport.PostAsync(
-            "/render",
-            input,
-            idempotencyKey,
-            options,
-            "application/pdf",
-            HttpCompletionOption.ResponseContentRead,
-            cancellationToken).ConfigureAwait(false);
-
-        return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+        // The Poli Page API has a single render endpoint that always returns a stored
+        // DocumentDescriptor with a presigned URL. Mirrors sdk-node's render.pdf (src/render.ts:78-114).
+        var descriptor = await RenderDocumentCoreAsync(input, options, cancellationToken).ConfigureAwait(false);
+        return await _downloader(descriptor.PresignedPdfUrl, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -85,19 +82,8 @@ public sealed class Render
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        var idempotencyKey = options?.IdempotencyKey ?? Guid.NewGuid().ToString();
-
-        var response = await _transport.PostAsync(
-            "/render",
-            input,
-            idempotencyKey,
-            options,
-            "application/pdf",
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken).ConfigureAwait(false);
-
-        var bodyStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        return new ResponseOwnedStream(bodyStream, response);
+        var descriptor = await RenderDocumentCoreAsync(input, options, cancellationToken).ConfigureAwait(false);
+        return await _streamDownloader(descriptor.PresignedPdfUrl, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -117,17 +103,29 @@ public sealed class Render
     /// <exception cref="ArgumentNullException"><paramref name="input"/> is <see langword="null"/>.</exception>
     /// <exception cref="PoliPageException">See <see cref="PdfAsync"/> for the full mapping.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    public async Task<DocumentDescriptor> DocumentAsync(
+    public Task<DocumentDescriptor> DocumentAsync(
         ProjectModeInput input,
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(input);
+        return RenderDocumentCoreAsync(input, options, cancellationToken);
+    }
 
+    // Shared core for PdfAsync, PdfStreamAsync, and DocumentAsync. Posts the render
+    // request and parses the descriptor envelope. The Downloader closure is injected so
+    // DocumentDescriptor.DownloadPdfAsync works on returned records (only callers that
+    // expose the descriptor to the user need that — internal byte/stream consumers
+    // call the closures directly).
+    private async Task<DocumentDescriptor> RenderDocumentCoreAsync(
+        ProjectModeInput input,
+        RequestOptions? options,
+        CancellationToken cancellationToken)
+    {
         var idempotencyKey = options?.IdempotencyKey ?? Guid.NewGuid().ToString();
 
         using var response = await _transport.PostAsync(
-            "/render",
+            "/v1/render",
             input,
             idempotencyKey,
             options,
@@ -136,7 +134,6 @@ public sealed class Render
             cancellationToken).ConfigureAwait(false);
 
         var descriptor = await ParseDescriptorAsync(response, cancellationToken).ConfigureAwait(false);
-        // Inject the SDK's downloader so DownloadPdfAsync works on the returned record.
         return descriptor with { Downloader = _downloader };
     }
 
@@ -163,7 +160,7 @@ public sealed class Render
         var idempotencyKey = options?.IdempotencyKey ?? Guid.NewGuid().ToString();
 
         using var response = await _transport.PostAsync(
-            "/preview",
+            "/v1/render/preview",
             input,
             idempotencyKey,
             options,

@@ -55,7 +55,7 @@ public sealed class DocumentsTests
     public async Task GetAsync_returns_DocumentDescriptor_for_existing_document()
     {
         using var harness = StartHarness();
-        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123").UsingGet())
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_abc123").UsingGet())
                .RespondWith(Response.Create()
                    .WithStatusCode(200)
                    .WithHeader("Content-Type", "application/json")
@@ -72,7 +72,7 @@ public sealed class DocumentsTests
     public async Task GetAsync_sends_GET_with_Authorization_Bearer()
     {
         using var harness = StartHarness();
-        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123").UsingGet())
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_abc123").UsingGet())
                .RespondWith(Response.Create()
                    .WithStatusCode(200)
                    .WithHeader("Content-Type", "application/json")
@@ -82,7 +82,7 @@ public sealed class DocumentsTests
 
         var entry = harness.Server.LogEntries.Should().ContainSingle().Subject;
         entry.RequestMessage.Method.Should().Be("GET");
-        entry.RequestMessage.Path.Should().Be("/documents/doc_abc123");
+        entry.RequestMessage.Path.Should().Be("/v1/documents/doc_abc123");
         entry.RequestMessage.Headers!["Authorization"].Should().Contain("Bearer pp_test_unit");
         entry.RequestMessage.Headers["Accept"].Should().Contain("application/json");
     }
@@ -96,7 +96,7 @@ public sealed class DocumentsTests
         var descriptorJson = SampleDescriptorJson.Replace(
             "https://placeholder.invalid/doc_abc123.pdf", presignedUrl, StringComparison.Ordinal);
 
-        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123").UsingGet())
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_abc123").UsingGet())
                .RespondWith(Response.Create()
                    .WithStatusCode(200)
                    .WithHeader("Content-Type", "application/json")
@@ -118,7 +118,7 @@ public sealed class DocumentsTests
     public async Task GetAsync_propagates_404_as_PoliPageNotFoundException()
     {
         using var harness = StartHarness();
-        harness.Server.Given(Request.Create().WithPath("/documents/doc_missing").UsingGet())
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_missing").UsingGet())
                .RespondWith(Response.Create()
                    .WithStatusCode(404)
                    .WithHeader("Content-Type", "application/json")
@@ -134,7 +134,7 @@ public sealed class DocumentsTests
     public async Task GetAsync_propagates_410_as_PoliPageGoneException()
     {
         using var harness = StartHarness();
-        harness.Server.Given(Request.Create().WithPath("/documents/doc_deleted").UsingGet())
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_deleted").UsingGet())
                .RespondWith(Response.Create()
                    .WithStatusCode(410)
                    .WithHeader("Content-Type", "application/json")
@@ -166,21 +166,21 @@ public sealed class DocumentsTests
     public async Task DeleteAsync_sends_DELETE_to_documents_id()
     {
         using var harness = StartHarness();
-        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123").UsingDelete())
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_abc123").UsingDelete())
                .RespondWith(Response.Create().WithStatusCode(204));
 
         await harness.Client.Documents.DeleteAsync("doc_abc123");
 
         var entry = harness.Server.LogEntries.Should().ContainSingle().Subject;
         entry.RequestMessage.Method.Should().Be("DELETE");
-        entry.RequestMessage.Path.Should().Be("/documents/doc_abc123");
+        entry.RequestMessage.Path.Should().Be("/v1/documents/doc_abc123");
     }
 
     [Fact]
     public async Task DeleteAsync_returns_void_on_204()
     {
         using var harness = StartHarness();
-        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123").UsingDelete())
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_abc123").UsingDelete())
                .RespondWith(Response.Create().WithStatusCode(204));
 
         var act = async () => await harness.Client.Documents.DeleteAsync("doc_abc123");
@@ -192,7 +192,7 @@ public sealed class DocumentsTests
     public async Task DeleteAsync_throws_PoliPageGoneException_on_410()
     {
         using var harness = StartHarness();
-        harness.Server.Given(Request.Create().WithPath("/documents/doc_already_gone").UsingDelete())
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_already_gone").UsingDelete())
                .RespondWith(Response.Create()
                    .WithStatusCode(410)
                    .WithHeader("Content-Type", "application/json")
@@ -207,7 +207,7 @@ public sealed class DocumentsTests
     public async Task DeleteAsync_throws_PoliPageNotFoundException_on_404()
     {
         using var harness = StartHarness();
-        harness.Server.Given(Request.Create().WithPath("/documents/doc_missing").UsingDelete())
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_missing").UsingDelete())
                .RespondWith(Response.Create()
                    .WithStatusCode(404)
                    .WithHeader("Content-Type", "application/json")
@@ -239,7 +239,7 @@ public sealed class DocumentsTests
     public async Task PreviewAsync_returns_HTML_body_and_PageCount_header()
     {
         using var harness = StartHarness();
-        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123/preview").UsingGet())
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_abc123/preview").UsingGet())
                .RespondWith(Response.Create()
                    .WithStatusCode(200)
                    .WithHeader("Content-Type", "text/html")
@@ -256,7 +256,7 @@ public sealed class DocumentsTests
     public async Task PreviewAsync_returns_zero_PageCount_when_header_missing()
     {
         using var harness = StartHarness();
-        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123/preview").UsingGet())
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_abc123/preview").UsingGet())
                .RespondWith(Response.Create()
                    .WithStatusCode(200)
                    .WithHeader("Content-Type", "text/html")
@@ -271,7 +271,7 @@ public sealed class DocumentsTests
     public async Task PreviewAsync_returns_zero_PageCount_when_header_malformed()
     {
         using var harness = StartHarness();
-        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123/preview").UsingGet())
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_abc123/preview").UsingGet())
                .RespondWith(Response.Create()
                    .WithStatusCode(200)
                    .WithHeader("Content-Type", "text/html")
@@ -287,7 +287,7 @@ public sealed class DocumentsTests
     public async Task PreviewAsync_sends_Accept_text_html()
     {
         using var harness = StartHarness();
-        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123/preview").UsingGet())
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_abc123/preview").UsingGet())
                .RespondWith(Response.Create()
                    .WithStatusCode(200)
                    .WithHeader("Content-Type", "text/html")
@@ -304,7 +304,7 @@ public sealed class DocumentsTests
     public async Task PreviewAsync_throws_PoliPageNotFoundException_on_404()
     {
         using var harness = StartHarness();
-        harness.Server.Given(Request.Create().WithPath("/documents/doc_missing/preview").UsingGet())
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_missing/preview").UsingGet())
                .RespondWith(Response.Create()
                    .WithStatusCode(404)
                    .WithHeader("Content-Type", "application/json")
@@ -345,7 +345,7 @@ public sealed class DocumentsTests
     public async Task ThumbnailsAsync_returns_Thumbnail_array_from_wire_envelope()
     {
         using var harness = StartHarness();
-        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123/thumbnails").UsingPost())
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_abc123/thumbnails").UsingPost())
                .RespondWith(Response.Create()
                    .WithStatusCode(200)
                    .WithHeader("Content-Type", "application/json")
@@ -367,7 +367,7 @@ public sealed class DocumentsTests
     public async Task ThumbnailsAsync_serializes_options_as_camelCase_body_with_lowercase_format()
     {
         using var harness = StartHarness();
-        harness.Server.Given(Request.Create().WithPath("/documents/doc_abc123/thumbnails").UsingPost())
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_abc123/thumbnails").UsingPost())
                .RespondWith(Response.Create()
                    .WithStatusCode(200)
                    .WithHeader("Content-Type", "application/json")
@@ -389,7 +389,7 @@ public sealed class DocumentsTests
     public async Task ThumbnailsAsync_returns_empty_list_when_envelope_has_no_thumbnails()
     {
         using var harness = StartHarness();
-        harness.Server.Given(Request.Create().WithPath("/documents/doc_empty/thumbnails").UsingPost())
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_empty/thumbnails").UsingPost())
                .RespondWith(Response.Create()
                    .WithStatusCode(200)
                    .WithHeader("Content-Type", "application/json")
