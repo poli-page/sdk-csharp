@@ -1,0 +1,42 @@
+version: 2
+
+updates:
+  - package-ecosystem: nuget
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: "Europe/Paris"
+    open-pull-requests-limit: 5
+    groups:
+      microsoft-extensions:
+        patterns:
+          - "Microsoft.Extensions.*"
+      test-deps:
+        patterns:
+          - "xunit*"
+          - "FluentAssertions"
+          - "WireMock.Net"
+          - "Microsoft.NET.Test.Sdk"
+          - "coverlet.*"
+      analyzers:
+        patterns:
+          - "Microsoft.CodeAnalysis.*"
+          - "Meziantou.Analyzer"
+          - "Roslynator.*"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: "Europe/Paris"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"

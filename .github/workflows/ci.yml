@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / ${{ matrix.framework }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        framework: [net8.0, net10.0]
+        include:
+          - os: windows-latest
+            framework: net10.0
+          - os: macos-latest
+            framework: net10.0
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET SDKs (8.0 + 10.0)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      # Each step auto-skips with a friendly message when the relevant
+      # project hasn't been added yet. This keeps the pipeline green from
+      # day one and lights up incrementally as phases land.
+
+      # Auto-skip uses `ls 2>/dev/null` instead of compgen / globstar so the
+      # checks behave the same on macOS bash 3.2 and Linux bash 5.x runners.
+
+      - name: Restore
+        run: |
+          if ls src/*/*.csproj tests/*/*.csproj 1> /dev/null 2>&1; then
+            dotnet restore
+          else
+            echo "::notice::No src/*/*.csproj or tests/*/*.csproj yet — skipping restore."
+          fi
+
+      - name: Format (verify)
+        run: |
+          if ls src/*/*.csproj tests/*/*.csproj 1> /dev/null 2>&1; then
+            dotnet format --verify-no-changes --no-restore
+          else
+            echo "::notice::No csproj yet — skipping format."
+          fi
+
+      - name: Build
+        run: |
+          if ls src/*/*.csproj 1> /dev/null 2>&1; then
+            dotnet build --configuration Release --no-restore --framework ${{ matrix.framework }} -warnaserror
+          else
+            echo "::notice::No src/*/*.csproj yet — skipping build."
+          fi
+
+      - name: Test
+        run: |
+          if ls tests/*/*.csproj 1> /dev/null 2>&1; then
+            dotnet test --configuration Release --no-build --framework ${{ matrix.framework }} \
+              --filter "Category!=Integration" \
+              --logger "trx;LogFileName=test-results.trx" \
+              --collect:"XPlat Code Coverage"
+          else
+            echo "::notice::No tests/*/*.csproj yet — skipping test."
+          fi
+
+      - name: Pack
+        if: matrix.framework == 'net10.0' && matrix.os == 'ubuntu-latest'
+        run: |
+          if ls src/*/*.csproj 1> /dev/null 2>&1; then
+            dotnet pack --configuration Release --no-build --output ./nupkg
+          else
+            echo "::notice::No src/*/*.csproj yet — skipping pack."
+          fi
+
+      - name: Install smoke
+        if: matrix.framework == 'net10.0' && matrix.os == 'ubuntu-latest'
+        run: |
+          if ls ./nupkg/*.nupkg 1> /dev/null 2>&1; then
+            pkg="$(ls ./nupkg/*.nupkg | head -1)"
+            echo "Probing install of ${pkg}"
+            tmp="$(mktemp -d)"
+            cd "$tmp"
+            dotnet new console --framework net10.0 -n InstallSmoke
+            cd InstallSmoke
+            dotnet add package PoliPage --source "$GITHUB_WORKSPACE/nupkg"
+            dotnet build --configuration Release
+          else
+            echo "::notice::No nupkg produced — skipping install smoke."
+          fi
+
+      - name: Upload test results
+        if: always() && hashFiles('**/test-results.trx') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}-${{ matrix.framework }}
+          path: '**/test-results.trx'

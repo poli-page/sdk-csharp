@@ -1,0 +1,65 @@
+<Project>
+
+  <PropertyGroup Label="Package identity">
+    <Version>1.0.0</Version>
+    <Authors>Poli Page</Authors>
+    <Company>Poli Page</Company>
+    <Product>Poli Page SDK for .NET</Product>
+    <Copyright>Copyright (c) 2026 Poli Page</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://poli.page</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/poli-page/sdk-csharp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>poli-page;pdf;html;template;sdk</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Language &amp; nullability">
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Analyzers" Condition="'$(EnablePoliPageAnalyzers)' != 'false'">
+    <!--
+      Pin analyzer behaviour so the net8.0 and net10.0 matrix jobs use the
+      same rule wave. New SDK waves would otherwise raise warnings only on
+      one leg, and TreatWarningsAsErrors=true would break the matrix
+      asymmetrically.
+    -->
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <AnalysisMode>All</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <PropertyGroup Label="XML docs" Condition="'$(IsPackable)' != 'false'">
+    <!--
+      CS1591 stays an error in src/PoliPage. Tests and samples set
+      <IsPackable>false</IsPackable> and locally <NoWarn>$(NoWarn);CS1591</NoWarn>.
+    -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Deterministic &amp; CI-friendly builds">
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <PropertyGroup Label="NuGet hygiene" Condition="'$(IsPackable)' != 'false'">
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <DebugType>embedded</DebugType>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <EnablePackageValidation>true</EnablePackageValidation>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Trim / AOT readiness">
+    <!-- Full source-gen JSON lands in Phase 8. -->
+    <IsAotCompatible Condition="'$(IsPackable)' != 'false'">true</IsAotCompatible>
+    <IsTrimmable Condition="'$(IsPackable)' != 'false'">true</IsTrimmable>
+    <EnableTrimAnalyzer Condition="'$(IsPackable)' != 'false'">true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer Condition="'$(IsPackable)' != 'false'">true</EnableAotAnalyzer>
+  </PropertyGroup>
+
+</Project>

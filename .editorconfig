@@ -1,0 +1,86 @@
+# EditorConfig for the Poli Page .NET SDK — feeds `dotnet format` and Roslyn.
+# https://learn.microsoft.com/dotnet/fundamentals/code-analysis/configuration-files
+
+root = true
+
+###############################
+# All files
+###############################
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+
+###############################
+# C# / VB / project files
+###############################
+[*.{cs,vb}]
+indent_size = 4
+max_line_length = 120
+
+# Organize using directives
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+# Prefer file-scoped namespaces
+csharp_style_namespace_declarations = file_scoped:warning
+
+# `var` only when type is apparent
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = false:suggestion
+
+# Expression-bodied members
+csharp_style_expression_bodied_methods = when_on_single_line:silent
+csharp_style_expression_bodied_properties = when_on_single_line:silent
+csharp_style_expression_bodied_accessors = when_on_single_line:silent
+
+# Pattern matching
+csharp_style_pattern_matching_over_is_with_cast_check = true:warning
+csharp_style_pattern_matching_over_as_with_null_check = true:warning
+
+# Modifier order
+csharp_preferred_modifier_order = public,private,protected,internal,file,static,extern,new,virtual,abstract,sealed,override,readonly,unsafe,required,volatile,async:warning
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+
+# Nullable
+dotnet_diagnostic.CS8600.severity = warning
+dotnet_diagnostic.CS8601.severity = warning
+dotnet_diagnostic.CS8602.severity = warning
+dotnet_diagnostic.CS8603.severity = warning
+
+# XML doc on public symbols — enforced via project property; this just confirms severity.
+dotnet_diagnostic.CS1591.severity = error
+
+# Async naming — analyzers handle this; just elevate to warning if the suffix is missing.
+dotnet_naming_rule.async_methods_must_end_with_async.severity = warning
+dotnet_naming_rule.async_methods_must_end_with_async.symbols = async_methods
+dotnet_naming_rule.async_methods_must_end_with_async.style = end_with_async
+dotnet_naming_symbols.async_methods.applicable_kinds = method
+dotnet_naming_symbols.async_methods.required_modifiers = async
+dotnet_naming_style.end_with_async.capitalization = pascal_case
+dotnet_naming_style.end_with_async.required_suffix = Async
+
+# Indent labels (otherwise default flush-left looks weird inside switches)
+csharp_indent_labels = one_less_than_current
+
+###############################
+# Generated code
+###############################
+[*.{Designer.cs,generated.cs,g.cs,g.i.cs}]
+generated_code = true
+
+###############################
+# Project / config files
+###############################
+[*.{csproj,vbproj,proj,projitems,shproj,props,targets,xml}]
+indent_size = 2
+
+[*.{json,yml,yaml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+max_line_length = off
