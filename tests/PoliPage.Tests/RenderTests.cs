@@ -707,11 +707,9 @@ public sealed class RenderTests
 
     private const string SamplePreviewJson = """
         {
-            "pages": [
-                "<html><body>Page 1</body></html>",
-                "<html><body>Page 2</body></html>"
-            ],
-            "totalPageCount": 2
+            "html": "<html><body>Page 1</body><body>Page 2</body></html>",
+            "totalPages": 2,
+            "environment": "sandbox"
         }
         """;
 
@@ -728,10 +726,10 @@ public sealed class RenderTests
 
         var result = await client.Render.PreviewAsync(DefaultInput());
 
-        result.Pages.Should().HaveCount(2);
-        result.Pages[0].Should().Contain("Page 1");
-        result.Pages[1].Should().Contain("Page 2");
-        result.TotalPageCount.Should().Be(2);
+        result.Html.Should().Contain("Page 1");
+        result.Html.Should().Contain("Page 2");
+        result.TotalPages.Should().Be(2);
+        result.Environment.Should().Be("sandbox");
     }
 
     [Fact]
@@ -749,7 +747,7 @@ public sealed class RenderTests
         var inline = new InlineModeInput { Template = "<html><body>Hi</body></html>" };
         var result = await client.Render.PreviewAsync(inline);
 
-        result.TotalPageCount.Should().Be(2);
+        result.TotalPages.Should().Be(2);
     }
 
     [Fact]

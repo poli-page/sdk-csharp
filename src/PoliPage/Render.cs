@@ -146,7 +146,7 @@ public sealed class Render
     /// <param name="input">Project-mode or inline render input.</param>
     /// <param name="options">Optional per-call overrides (idempotency key, timeout, extra headers).</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
-    /// <returns>A <see cref="PreviewResult"/> with HTML pages and total page count.</returns>
+    /// <returns>A <see cref="PreviewResult"/> with the rendered HTML, total page count, and environment.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="input"/> is <see langword="null"/>.</exception>
     /// <exception cref="PoliPageException">See <see cref="PdfAsync"/> for the full mapping.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
