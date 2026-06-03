@@ -15,6 +15,9 @@ namespace PoliPage;
 /// </summary>
 public sealed class PoliPageNetworkException : PoliPageException
 {
+    /// <inheritdoc/>
+    protected override int? PayloadStatus() => 503;
+
     /// <summary>Initialises a new instance of <see cref="PoliPageNetworkException"/> with default values.</summary>
     public PoliPageNetworkException()
         : base(PoliPageErrorCode.Network, statusCode: 0, "A network error occurred.")

@@ -74,4 +74,27 @@ public class PoliPageException : Exception
         StatusCode = statusCode;
         RequestId = requestId;
     }
+
+    /// <summary>
+    /// Returns the canonical wire payload for framework integrations:
+    /// <c>{ Code, Message, Status, RequestId }</c>. The
+    /// <see cref="StatusCode"/> property is unchanged for transport
+    /// failures — only the payload surfaces 503/504, so callers that
+    /// inspect <see cref="StatusCode"/> directly are not affected.
+    /// </summary>
+    public PoliPageErrorPayload ToPayload()
+        => new(Code, Message, PayloadStatus(), RequestId);
+
+    /// <summary>
+    /// Resolves the wire status surfaced by <see cref="ToPayload"/>.
+    /// Default: the API status when present, 504 for the bare-base
+    /// timeout shape, otherwise <see langword="null"/>. Subclasses override
+    /// for transport-specific defaults (network → 503).
+    /// </summary>
+    protected virtual int? PayloadStatus()
+    {
+        if (StatusCode != 0)
+            return StatusCode;
+        return Code == PoliPageErrorCode.Timeout ? 504 : null;
+    }
 }

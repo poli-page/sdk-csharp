@@ -12,6 +12,8 @@ internal static class ErrorParsing
     private sealed class ErrorEnvelope
     {
         public string? Code { get; set; }
+        public string? Detail { get; set; }
+        public string? Title { get; set; }
         public string? Message { get; set; }
         public string? RequestId { get; set; }
     }
@@ -48,7 +50,14 @@ internal static class ErrorParsing
 
         var status = (int)response.StatusCode;
         var code = envelope?.Code ?? DefaultCodeFor(status);
-        var message = envelope?.Message ?? response.ReasonPhrase ?? $"HTTP {status}";
+        // RFC 7807: prefer `detail` (specific reason) over `title` (generic name)
+        // over the legacy `message` field; fall back to the HTTP reason phrase
+        // and finally a canned status string. No "API error (NNN): CODE" synthesis.
+        var message = envelope?.Detail
+            ?? envelope?.Title
+            ?? envelope?.Message
+            ?? response.ReasonPhrase
+            ?? $"HTTP {status}";
         var requestId = envelope?.RequestId
             ?? (response.Headers.TryGetValues("X-Request-Id", out var v) ? v.FirstOrDefault() : null);
 
