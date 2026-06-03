@@ -29,53 +29,53 @@ public sealed class PoliPageClientTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void Ctor_throws_ArgumentException_when_ApiKey_is_null_empty_or_whitespace(string? apiKey)
+    public void Ctor_throws_PoliPageException_with_invalid_options_when_ApiKey_is_null_empty_or_whitespace(string? apiKey)
     {
         var opts = new PoliPageClientOptions { ApiKey = apiKey! };
 
         Action act = () => _ = new PoliPageClient(opts);
 
-        act.Should().Throw<ArgumentException>()
-            .WithParameterName("options");
+        act.Should().Throw<PoliPageException>()
+            .Where(e => e.Code == PoliPageErrorCode.InvalidOptions);
     }
 
     [Theory]
     [InlineData(-1)]
     [InlineData(int.MinValue)]
-    public void Ctor_throws_ArgumentOutOfRangeException_when_MaxRetries_is_negative(int maxRetries)
+    public void Ctor_throws_PoliPageException_with_invalid_options_when_MaxRetries_is_negative(int maxRetries)
     {
         var opts = ValidOptions() with { MaxRetries = maxRetries };
 
         Action act = () => _ = new PoliPageClient(opts);
 
-        act.Should().Throw<ArgumentOutOfRangeException>()
-            .WithParameterName("options");
+        act.Should().Throw<PoliPageException>()
+            .Where(e => e.Code == PoliPageErrorCode.InvalidOptions);
     }
 
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    public void Ctor_throws_ArgumentOutOfRangeException_when_RetryDelay_is_zero_or_negative(int milliseconds)
+    public void Ctor_throws_PoliPageException_with_invalid_options_when_RetryDelay_is_zero_or_negative(int milliseconds)
     {
         var opts = ValidOptions() with { RetryDelay = TimeSpan.FromMilliseconds(milliseconds) };
 
         Action act = () => _ = new PoliPageClient(opts);
 
-        act.Should().Throw<ArgumentOutOfRangeException>()
-            .WithParameterName("options");
+        act.Should().Throw<PoliPageException>()
+            .Where(e => e.Code == PoliPageErrorCode.InvalidOptions);
     }
 
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    public void Ctor_throws_ArgumentOutOfRangeException_when_RequestTimeout_is_zero_or_negative(int seconds)
+    public void Ctor_throws_PoliPageException_with_invalid_options_when_RequestTimeout_is_zero_or_negative(int seconds)
     {
         var opts = ValidOptions() with { RequestTimeout = TimeSpan.FromSeconds(seconds) };
 
         Action act = () => _ = new PoliPageClient(opts);
 
-        act.Should().Throw<ArgumentOutOfRangeException>()
-            .WithParameterName("options");
+        act.Should().Throw<PoliPageException>()
+            .Where(e => e.Code == PoliPageErrorCode.InvalidOptions);
     }
 
     // ------------------------------------------------------------------ //

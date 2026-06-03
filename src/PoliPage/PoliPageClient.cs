@@ -50,11 +50,13 @@ public sealed class PoliPageClient : IDisposable
     /// </summary>
     /// <param name="options">Client configuration. Must not be <see langword="null"/>.</param>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException"><see cref="PoliPageClientOptions.ApiKey"/> is <see langword="null"/>, empty, or whitespace.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">
+    /// <exception cref="PoliPageException">
+    /// <see cref="PoliPageClientOptions.ApiKey"/> is null/empty/whitespace, or
     /// <see cref="PoliPageClientOptions.MaxRetries"/> is negative, or
     /// <see cref="PoliPageClientOptions.RetryDelay"/> or
     /// <see cref="PoliPageClientOptions.RequestTimeout"/> are not positive.
+    /// Surfaces with <see cref="PoliPageException.Code"/> equal to
+    /// <see cref="PoliPageErrorCode.InvalidOptions"/>.
     /// </exception>
     public PoliPageClient(PoliPageClientOptions options) : this(options, jitter: null) { }
 
@@ -64,17 +66,18 @@ public sealed class PoliPageClient : IDisposable
     {
         ArgumentNullException.ThrowIfNull(options);
 
+        // Config validation uses PoliPageException("invalid_options") per sdk-node/src/index.ts:84-86.
         if (string.IsNullOrWhiteSpace(options.ApiKey))
-            throw new ArgumentException("PoliPage: ApiKey is required.", nameof(options));
+            throw new PoliPageException(PoliPageErrorCode.InvalidOptions, statusCode: 0, "PoliPage: ApiKey is required.");
 
         if (options.MaxRetries < 0)
-            throw new ArgumentOutOfRangeException(nameof(options), options.MaxRetries, "PoliPage: MaxRetries must be ≥ 0.");
+            throw new PoliPageException(PoliPageErrorCode.InvalidOptions, statusCode: 0, "PoliPage: MaxRetries must be ≥ 0.");
 
         if (options.RetryDelay <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(options), options.RetryDelay, "PoliPage: RetryDelay must be > 0.");
+            throw new PoliPageException(PoliPageErrorCode.InvalidOptions, statusCode: 0, "PoliPage: RetryDelay must be > 0.");
 
         if (options.RequestTimeout <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(options), options.RequestTimeout, "PoliPage: RequestTimeout must be > 0.");
+            throw new PoliPageException(PoliPageErrorCode.InvalidOptions, statusCode: 0, "PoliPage: RequestTimeout must be > 0.");
 
         _options = options;
         BaseAddress = options.BaseUrl ?? DefaultBaseAddress;
