@@ -161,9 +161,12 @@ public sealed class Documents
         var path = $"/v1/documents/{Uri.EscapeDataString(documentId)}/thumbnails";
         var idempotencyKey = options?.IdempotencyKey ?? Guid.NewGuid().ToString();
 
+        // Why: the deployed API expects { "thumbnails": { ... } } so the server can extend the
+        // envelope with non-option fields later (e.g. signed timestamps) without breaking clients.
+        // Reference: sdk-node/src/documents.ts:95-99.
         using var response = await _transport.PostAsync(
             path,
-            thumbnailOptions,
+            new ThumbnailsRequest(thumbnailOptions),
             idempotencyKey,
             options,
             "application/json",
@@ -195,4 +198,9 @@ public sealed class Documents
         [System.Text.Json.Serialization.JsonPropertyName("thumbnails")]
         public IReadOnlyList<Thumbnail>? Thumbnails { get; init; }
     }
+
+    // Wire request envelope. Server expects the options nested under "thumbnails" so the
+    // wire shape can grow (e.g. signed timestamps) without breaking older clients.
+    private sealed record ThumbnailsRequest(
+        [property: System.Text.Json.Serialization.JsonPropertyName("thumbnails")] ThumbnailOptions Thumbnails);
 }

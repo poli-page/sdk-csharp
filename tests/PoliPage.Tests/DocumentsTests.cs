@@ -364,7 +364,7 @@ public sealed class DocumentsTests
     }
 
     [Fact]
-    public async Task ThumbnailsAsync_serializes_options_as_camelCase_body_with_lowercase_format()
+    public async Task ThumbnailsAsync_serializes_options_inside_thumbnails_envelope_with_lowercase_format()
     {
         using var harness = StartHarness();
         harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_abc123/thumbnails").UsingPost())
@@ -380,8 +380,11 @@ public sealed class DocumentsTests
         var entry = harness.Server.LogEntries.Should().ContainSingle().Subject;
         var body = JsonDocument.Parse(entry.RequestMessage.Body!).RootElement;
 
-        body.GetProperty("width").GetInt32().Should().Be(320);
-        body.GetProperty("format").GetString().Should().Be("jpeg",
+        // Wire shape: { "thumbnails": { width, format, ... } } — see sdk-node/src/documents.ts:95-99.
+        body.TryGetProperty("thumbnails", out var inner).Should().BeTrue(
+            "the deployed API expects the options nested under a 'thumbnails' key");
+        inner.GetProperty("width").GetInt32().Should().Be(320);
+        inner.GetProperty("format").GetString().Should().Be("jpeg",
             "ThumbnailFormat must serialise as a camelCase lowercase string for the wire");
     }
 

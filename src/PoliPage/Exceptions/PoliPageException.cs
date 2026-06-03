@@ -95,6 +95,6 @@ public class PoliPageException : Exception
     {
         if (StatusCode != 0)
             return StatusCode;
-        return Code == PoliPageErrorCode.Timeout ? 504 : null;
+        return string.Equals(Code, PoliPageErrorCode.Timeout, StringComparison.Ordinal) ? 504 : null;
     }
 }
