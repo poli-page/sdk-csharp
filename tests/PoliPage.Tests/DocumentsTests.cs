@@ -43,7 +43,9 @@ public sealed class DocumentsTests
             "format": "pdf",
             "pageCount": 3,
             "sizeBytes": 12345,
-            "presignedPdfUrl": "https://placeholder.invalid/doc_abc123.pdf"
+            "createdAt": "2026-06-03T10:00:00Z",
+            "presignedPdfUrl": "https://placeholder.invalid/doc_abc123.pdf",
+            "expiresAt": "2026-06-03T10:15:00Z"
         }
         """;
 

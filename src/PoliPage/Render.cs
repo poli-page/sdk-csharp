@@ -16,6 +16,10 @@ public sealed class Render
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters =
+        {
+            new System.Text.Json.Serialization.JsonStringEnumConverter<Orientation>(JsonNamingPolicy.CamelCase),
+        },
     };
 
     internal Render(

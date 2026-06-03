@@ -64,7 +64,9 @@ public sealed class RenderTests
                 "format": "pdf",
                 "pageCount": 1,
                 "sizeBytes": 100,
-                "presignedPdfUrl": "{{presignedUrl}}"
+                "createdAt": "2026-06-03T10:00:00Z",
+                "presignedPdfUrl": "{{presignedUrl}}",
+                "expiresAt": "2026-06-03T10:15:00Z"
             }
             """;
 
@@ -431,7 +433,9 @@ public sealed class RenderTests
                 "format": "pdf",
                 "pageCount": 1,
                 "sizeBytes": 100,
-                "presignedPdfUrl": "{{presignedUrl}}"
+                "createdAt": "2026-06-03T10:00:00Z",
+                "presignedPdfUrl": "{{presignedUrl}}",
+                "expiresAt": "2026-06-03T10:15:00Z"
             }
             """;
         server.Given(Request.Create().WithPath("/api/v1/render").UsingPost())
@@ -551,7 +555,9 @@ public sealed class RenderTests
             "format": "pdf",
             "pageCount": 3,
             "sizeBytes": 12345,
-            "presignedPdfUrl": "https://placeholder.invalid/doc_abc123.pdf"
+            "createdAt": "2026-06-03T10:00:00Z",
+            "presignedPdfUrl": "https://placeholder.invalid/doc_abc123.pdf",
+            "expiresAt": "2026-06-03T10:15:00Z"
         }
         """;
 
@@ -692,7 +698,9 @@ public sealed class RenderTests
             Format = "pdf",
             PageCount = 1,
             SizeBytes = 100,
+            CreatedAt = DateTimeOffset.Parse("2026-06-03T10:00:00Z", System.Globalization.CultureInfo.InvariantCulture),
             PresignedPdfUrl = "https://example.invalid/doc.pdf",
+            ExpiresAt = DateTimeOffset.Parse("2026-06-03T10:15:00Z", System.Globalization.CultureInfo.InvariantCulture),
         };
 
         var act = async () => await descriptor.DownloadPdfAsync();

@@ -93,7 +93,9 @@ public sealed class RetryHandlerTests
                 "format": "pdf",
                 "pageCount": 1,
                 "sizeBytes": 100,
-                "presignedPdfUrl": "{{presignedUrl}}"
+                "createdAt": "2026-06-03T10:00:00Z",
+                "presignedPdfUrl": "{{presignedUrl}}",
+                "expiresAt": "2026-06-03T10:15:00Z"
             }
             """;
 
@@ -146,7 +148,9 @@ public sealed class RetryHandlerTests
                 "format": "pdf",
                 "pageCount": 1,
                 "sizeBytes": 100,
-                "presignedPdfUrl": "{{presignedUrl}}"
+                "createdAt": "2026-06-03T10:00:00Z",
+                "presignedPdfUrl": "{{presignedUrl}}",
+                "expiresAt": "2026-06-03T10:15:00Z"
             }
             """;
 

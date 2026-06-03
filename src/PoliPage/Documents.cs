@@ -17,6 +17,10 @@ public sealed class Documents
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters =
+        {
+            new System.Text.Json.Serialization.JsonStringEnumConverter<Orientation>(JsonNamingPolicy.CamelCase),
+        },
     };
 
     internal Documents(ITransport transport, Func<string, CancellationToken, Task<byte[]>> downloader)

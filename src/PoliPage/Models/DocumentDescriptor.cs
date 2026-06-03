@@ -46,8 +46,17 @@ public sealed record DocumentDescriptor
     /// <summary>API environment (e.g. <c>live</c>, <c>test</c>).</summary>
     [JsonPropertyName("environment")] public required string Environment { get; init; }
 
+    /// <summary>Identifier of the API key used to create the document, when available.</summary>
+    [JsonPropertyName("apiKeyId")] public string? ApiKeyId { get; init; }
+
     /// <summary>Document format (e.g. <c>pdf</c>).</summary>
     [JsonPropertyName("format")] public required string Format { get; init; }
+
+    /// <summary>Page orientation at render time, when set. Null when the API does not surface it.</summary>
+    [JsonPropertyName("orientation")] public Orientation? Orientation { get; init; }
+
+    /// <summary>BCP 47 locale used at render time (e.g. <c>fr-FR</c>), when set.</summary>
+    [JsonPropertyName("locale")] public string? Locale { get; init; }
 
     /// <summary>Number of pages in the rendered document.</summary>
     [JsonPropertyName("pageCount")] public required int PageCount { get; init; }
@@ -55,8 +64,14 @@ public sealed record DocumentDescriptor
     /// <summary>Size of the rendered document on disk in bytes.</summary>
     [JsonPropertyName("sizeBytes")] public required long SizeBytes { get; init; }
 
+    /// <summary>Server timestamp when the document was rendered and stored.</summary>
+    [JsonPropertyName("createdAt")] public required DateTimeOffset CreatedAt { get; init; }
+
     /// <summary>Time-limited presigned URL for direct PDF download (~15 min TTL).</summary>
     [JsonPropertyName("presignedPdfUrl")] public required string PresignedPdfUrl { get; init; }
+
+    /// <summary>Server timestamp when the presigned PDF URL expires (~15 min after <see cref="CreatedAt"/>).</summary>
+    [JsonPropertyName("expiresAt")] public required DateTimeOffset ExpiresAt { get; init; }
 
     /// <summary>Caller-supplied primitive-only metadata, round-tripped from the original render.</summary>
     [JsonPropertyName("metadata")] public RenderMetadata? Metadata { get; init; }
