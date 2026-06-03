@@ -20,6 +20,7 @@ public sealed class Documents
         Converters =
         {
             new System.Text.Json.Serialization.JsonStringEnumConverter<Orientation>(JsonNamingPolicy.CamelCase),
+            new System.Text.Json.Serialization.JsonStringEnumConverter<PageFormat>(),
         },
     };
 

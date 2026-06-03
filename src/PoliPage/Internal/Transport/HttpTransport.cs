@@ -23,10 +23,16 @@ internal sealed class HttpTransport : ITransport
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        // Wire-format convention: enums serialise as camelCase lowercase strings
-        // (e.g. ThumbnailFormat.Png → "png") to match the Poli Page API. The generic
-        // JsonStringEnumConverter<TEnum> is the AOT-friendly variant per IL3050.
-        Converters = { new JsonStringEnumConverter<ThumbnailFormat>(JsonNamingPolicy.CamelCase) },
+        // Wire-format convention: enums serialise as the canonical literal expected by the API.
+        // - ThumbnailFormat / Orientation → camelCase lowercase ("png", "portrait")
+        // - PageFormat → PascalCase verbatim ("A4", "Letter")
+        // The generic JsonStringEnumConverter<TEnum> is the AOT-friendly variant per IL3050.
+        Converters =
+        {
+            new JsonStringEnumConverter<ThumbnailFormat>(JsonNamingPolicy.CamelCase),
+            new JsonStringEnumConverter<Orientation>(JsonNamingPolicy.CamelCase),
+            new JsonStringEnumConverter<PageFormat>(),
+        },
     };
 
     internal HttpTransport(

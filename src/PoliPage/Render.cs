@@ -19,6 +19,7 @@ public sealed class Render
         Converters =
         {
             new System.Text.Json.Serialization.JsonStringEnumConverter<Orientation>(JsonNamingPolicy.CamelCase),
+            new System.Text.Json.Serialization.JsonStringEnumConverter<PageFormat>(),
         },
     };
 
@@ -126,7 +127,8 @@ public sealed class Render
         RequestOptions? options,
         CancellationToken cancellationToken)
     {
-        var idempotencyKey = options?.IdempotencyKey ?? Guid.NewGuid().ToString();
+        // Precedence: per-call RequestOptions wins over input-level IdempotencyKey, both win over the auto-generated UUID.
+        var idempotencyKey = options?.IdempotencyKey ?? input.IdempotencyKey ?? Guid.NewGuid().ToString();
 
         using var response = await _transport.PostAsync(
             "/v1/render",
@@ -161,7 +163,7 @@ public sealed class Render
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        var idempotencyKey = options?.IdempotencyKey ?? Guid.NewGuid().ToString();
+        var idempotencyKey = options?.IdempotencyKey ?? input.IdempotencyKey ?? Guid.NewGuid().ToString();
 
         using var response = await _transport.PostAsync(
             "/v1/render/preview",
