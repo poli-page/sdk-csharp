@@ -117,6 +117,23 @@ internal sealed class HttpTransport : ITransport
     private async Task<HttpResponseMessage> SendAndMapErrorsAsync(
         HttpRequestMessage request, TimeSpan attemptTimeout, HttpCompletionOption completionOption, CancellationToken callerToken)
     {
+        try
+        {
+            return await SendAndMapErrorsInnerAsync(request, attemptTimeout, completionOption, callerToken).ConfigureAwait(false);
+        }
+        catch (PoliPageException ex)
+        {
+            // Fire OnError on every terminal PoliPageException — matches sdk-node/src/index.ts:137,163,168,211.
+            // Caller cancellation (OperationCanceledException) is intentionally excluded — that's
+            // not an SDK error and the inner method re-throws it directly without wrapping.
+            SafeFireOnError(ex);
+            throw;
+        }
+    }
+
+    private async Task<HttpResponseMessage> SendAndMapErrorsInnerAsync(
+        HttpRequestMessage request, TimeSpan attemptTimeout, HttpCompletionOption completionOption, CancellationToken callerToken)
+    {
         Exception? lastException = null;
         HttpResponseMessage? response = null;
 
@@ -290,6 +307,16 @@ internal sealed class HttpTransport : ITransport
         catch
         {
             // Hooks must not break the request.
+        }
+    }
+
+    private void SafeFireOnError(Exception evt)
+    {
+        if (_onError is null) return;
+        try { _onError(evt); }
+        catch
+        {
+            // Hooks must not break the request — original exception is already in flight.
         }
     }
 
