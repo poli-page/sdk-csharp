@@ -440,7 +440,7 @@ public sealed class ErrorMappingTests
         var act = async () => await client.Render.PdfAsync(DefaultInput());
 
         var ex = await act.Should().ThrowAsync<PoliPageNetworkException>();
-        ex.Which.Code.Should().Be(PoliPageErrorCode.Network);
+        ex.Which.Code.Should().Be(PoliPageErrorCode.NetworkError);
         ex.Which.StatusCode.Should().Be(0);
         ex.Which.InnerException.Should().BeOfType<HttpRequestException>();
     }

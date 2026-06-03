@@ -32,14 +32,36 @@ public static class PoliPageErrorCode
     /// <summary>One or more request parameters failed validation (HTTP 400).</summary>
     public const string ValidationError = "VALIDATION_ERROR";
 
+    /// <summary>A required data field is missing from the request body.</summary>
+    public const string MissingData = "MISSING_DATA";
+
+    /// <summary>Neither a project nor a template was supplied (one is required).</summary>
+    public const string MissingProjectOrTemplate = "MISSING_PROJECT_OR_TEMPLATE";
+
+    /// <summary>A template slug is required but was not provided.</summary>
+    public const string MissingTemplateSlug = "MISSING_TEMPLATE_SLUG";
+
+    /// <summary>A project identifier is required when rendering a document.</summary>
+    public const string ProjectRequiredForDocument = "PROJECT_REQUIRED_FOR_DOCUMENT";
+
     // RATE_LIMIT removed — the API uses QuotaExceeded / OverageCapExceeded with HTTP 429.
     // Use PoliPageException.IsRateLimitError() to check by status instead of by code.
 
+    // ------------------------------------------------------------------ //
+    // SDK-internal codes (lowercase, matching reference SDK wire spelling)
+    // ------------------------------------------------------------------ //
+
+    /// <summary>The options or parameters passed to the SDK call are invalid.</summary>
+    public const string InvalidOptions = "invalid_options";
+
     /// <summary>The request timed out before the server responded.</summary>
-    public const string Timeout = "TIMEOUT";
+    public const string Timeout = "timeout";
 
     /// <summary>A DNS, TCP, or TLS failure prevented the request from reaching the server.</summary>
-    public const string Network = "NETWORK";
+    public const string NetworkError = "network_error";
+
+    /// <summary>The in-flight request was aborted by the caller.</summary>
+    public const string Aborted = "aborted";
 
     /// <summary>Downloading the generated file from remote storage failed.</summary>
     public const string DownloadFailed = "DOWNLOAD_FAILED";

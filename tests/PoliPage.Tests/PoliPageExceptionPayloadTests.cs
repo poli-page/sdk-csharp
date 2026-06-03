@@ -26,7 +26,7 @@ public sealed class PoliPageExceptionPayloadTests
     public void ToPayload_uses_503_for_network_exception()
     {
         var ex = new PoliPageNetworkException(
-            PoliPageErrorCode.Network, "dns failure", new HttpRequestException("dns"));
+            PoliPageErrorCode.NetworkError, "dns failure", new HttpRequestException("dns"));
 
         var payload = ex.ToPayload();
 

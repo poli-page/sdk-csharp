@@ -181,7 +181,7 @@ internal sealed class HttpTransport : ITransport
         }
         catch (HttpRequestException hre)
         {
-            return (null, new PoliPageNetworkException(PoliPageErrorCode.Network, "Network error during request.", hre));
+            return (null, new PoliPageNetworkException(PoliPageErrorCode.NetworkError, "Network error during request.", hre));
         }
     }
 

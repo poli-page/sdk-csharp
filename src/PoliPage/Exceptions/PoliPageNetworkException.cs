@@ -20,25 +20,25 @@ public sealed class PoliPageNetworkException : PoliPageException
 
     /// <summary>Initialises a new instance of <see cref="PoliPageNetworkException"/> with default values.</summary>
     public PoliPageNetworkException()
-        : base(PoliPageErrorCode.Network, statusCode: 0, "A network error occurred.")
+        : base(PoliPageErrorCode.NetworkError, statusCode: 0, "A network error occurred.")
     {
     }
 
     /// <summary>Initialises a new instance of <see cref="PoliPageNetworkException"/> with the specified message.</summary>
     /// <param name="message">A human-readable description of the network failure.</param>
     public PoliPageNetworkException(string message)
-        : base(PoliPageErrorCode.Network, statusCode: 0, message)
+        : base(PoliPageErrorCode.NetworkError, statusCode: 0, message)
     {
     }
 
     /// <summary>
     /// Initialises a new instance of <see cref="PoliPageNetworkException"/> with the specified message and inner exception.
-    /// Uses <see cref="PoliPageErrorCode.Network"/> as the error code.
+    /// Uses <see cref="PoliPageErrorCode.NetworkError"/> as the error code.
     /// </summary>
     /// <param name="message">A human-readable description of the network failure.</param>
     /// <param name="innerException">The exception that is the cause of the current exception.</param>
     public PoliPageNetworkException(string message, Exception innerException)
-        : base(PoliPageErrorCode.Network, statusCode: 0, message, requestId: null, innerException)
+        : base(PoliPageErrorCode.NetworkError, statusCode: 0, message, requestId: null, innerException)
     {
     }
 
