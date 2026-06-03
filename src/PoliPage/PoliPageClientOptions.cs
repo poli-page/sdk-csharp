@@ -77,6 +77,20 @@ public sealed record PoliPageClientOptions
     /// <summary>
     /// Callback invoked when a request fails after all retries are exhausted.
     /// Receives the final exception that caused the failure.
+    /// Hook exceptions are swallowed — the original failure still surfaces to the caller.
     /// </summary>
     public Action<Exception>? OnError { get; set; }
+
+    /// <summary>
+    /// Callback invoked once per HTTP attempt, immediately before the request is sent.
+    /// Fires every time, including each retry attempt. Reference: <c>sdk-node/src/index.ts:186-190</c>.
+    /// </summary>
+    public Action<RequestEvent>? OnRequest { get; set; }
+
+    /// <summary>
+    /// Callback invoked once per successful (2xx) HTTP response. Non-2xx responses do
+    /// not fire this hook — they surface through <see cref="OnRetry"/> (transient) or
+    /// <see cref="OnError"/> (terminal). Reference: <c>sdk-node/src/index.ts:224-228</c>.
+    /// </summary>
+    public Action<ResponseEvent>? OnResponse { get; set; }
 }

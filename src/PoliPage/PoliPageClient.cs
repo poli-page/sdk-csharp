@@ -112,6 +112,9 @@ public sealed class PoliPageClient : IDisposable
             options.MaxRetries,
             options.RetryDelay,
             options.OnRetry,
+            options.OnError,
+            options.OnRequest,
+            options.OnResponse,
             jitter);
         _render = new Render(transport, DownloadAsync, DownloadStreamAsync);
         _documents = new Documents(transport, DownloadAsync);

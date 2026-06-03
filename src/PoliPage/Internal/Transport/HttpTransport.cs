@@ -15,6 +15,9 @@ internal sealed class HttpTransport : ITransport
     private readonly int _maxRetries;
     private readonly TimeSpan _retryDelay;
     private readonly Action<RetryEvent>? _onRetry;
+    private readonly Action<Exception>? _onError;
+    private readonly Action<RequestEvent>? _onRequest;
+    private readonly Action<ResponseEvent>? _onResponse;
     private readonly Func<double> _jitter;
 
     private static readonly string UserAgent = $"poli-page-sdk-dotnet/{VersionInfo.Version}";
@@ -43,6 +46,9 @@ internal sealed class HttpTransport : ITransport
         int maxRetries,
         TimeSpan retryDelay,
         Action<RetryEvent>? onRetry = null,
+        Action<Exception>? onError = null,
+        Action<RequestEvent>? onRequest = null,
+        Action<ResponseEvent>? onResponse = null,
         Func<double>? jitter = null)
     {
         _httpClient = httpClient;
@@ -52,6 +58,9 @@ internal sealed class HttpTransport : ITransport
         _maxRetries = maxRetries;
         _retryDelay = retryDelay;
         _onRetry = onRetry;
+        _onError = onError;
+        _onRequest = onRequest;
+        _onResponse = onResponse;
         _jitter = jitter ?? DefaultJitter;
     }
 
@@ -121,15 +130,29 @@ internal sealed class HttpTransport : ITransport
 
             try
             {
+                // Fire OnRequest BEFORE sending — gives observers a chance to log the attempt
+                // even if the send itself throws synchronously.
+                SafeFireOnRequest(new RequestEvent(
+                    attemptRequest.Method.Method,
+                    attemptRequest.RequestUri?.AbsoluteUri ?? "",
+                    attempt + 1));
+
                 // Create a fresh timeout CTS per attempt so that a timed-out attempt
                 // does not prevent subsequent retry attempts from running.
                 using var timeoutCts = new CancellationTokenSource(attemptTimeout);
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(callerToken, timeoutCts.Token);
 
+                var t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 (response, lastException) = await TrySendAsync(attemptRequest, completionOption, linkedCts.Token, callerToken).ConfigureAwait(false);
 
                 if (response is { IsSuccessStatusCode: true })
+                {
+                    SafeFireOnResponse(new ResponseEvent(
+                        (int)response.StatusCode,
+                        response.Headers.TryGetValues("X-Request-Id", out var v) ? v.FirstOrDefault() : null,
+                        ElapsedMilliseconds(t0)));
                     return response;
+                }
 
                 var canRetry = IsRetryable(response, lastException) && attempt < _maxRetries;
                 if (!canRetry)
@@ -248,6 +271,32 @@ internal sealed class HttpTransport : ITransport
         {
             // Why: hooks must never break the request — swallow all exceptions.
         }
+    }
+
+    private void SafeFireOnRequest(RequestEvent evt)
+    {
+        if (_onRequest is null) return;
+        try { _onRequest(evt); }
+        catch
+        {
+            // Hooks must not break the request.
+        }
+    }
+
+    private void SafeFireOnResponse(ResponseEvent evt)
+    {
+        if (_onResponse is null) return;
+        try { _onResponse(evt); }
+        catch
+        {
+            // Hooks must not break the request.
+        }
+    }
+
+    private static long ElapsedMilliseconds(long startTimestamp)
+    {
+        var elapsed = System.Diagnostics.Stopwatch.GetTimestamp() - startTimestamp;
+        return elapsed * 1000L / System.Diagnostics.Stopwatch.Frequency;
     }
 
     private static bool IsRetryable(HttpResponseMessage? response, Exception? exception)
