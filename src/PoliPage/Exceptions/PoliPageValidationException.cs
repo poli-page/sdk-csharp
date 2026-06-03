@@ -8,17 +8,17 @@ namespace PoliPage;
 public sealed class PoliPageValidationException : PoliPageException
 {
     /// <summary>Initialises a new instance of <see cref="PoliPageValidationException"/> with default values.</summary>
-    public PoliPageValidationException() : this(PoliPageErrorCode.Validation, 422, "Validation failed.") { }
+    public PoliPageValidationException() : this(PoliPageErrorCode.ValidationError, 422, "Validation failed.") { }
 
     /// <summary>Initialises a new instance of <see cref="PoliPageValidationException"/> with the specified message.</summary>
     /// <param name="message">A human-readable description of the error.</param>
-    public PoliPageValidationException(string message) : this(PoliPageErrorCode.Validation, 422, message) { }
+    public PoliPageValidationException(string message) : this(PoliPageErrorCode.ValidationError, 422, message) { }
 
     /// <summary>Initialises a new instance of <see cref="PoliPageValidationException"/> with the specified message and inner exception.</summary>
     /// <param name="message">A human-readable description of the error.</param>
     /// <param name="innerException">The exception that is the cause of the current exception.</param>
     public PoliPageValidationException(string message, Exception innerException)
-        : this(PoliPageErrorCode.Validation, 422, message, innerException: innerException) { }
+        : this(PoliPageErrorCode.ValidationError, 422, message, innerException: innerException) { }
 
     /// <summary>
     /// Initialises a new instance of <see cref="PoliPageValidationException"/>.

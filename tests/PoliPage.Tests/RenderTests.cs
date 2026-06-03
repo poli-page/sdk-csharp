@@ -510,7 +510,7 @@ public sealed class RenderTests
               .RespondWith(Response.Create()
                   .WithStatusCode(401)
                   .WithHeader("Content-Type", "application/json")
-                  .WithBody("{\"code\":\"UNAUTHORIZED\",\"message\":\"bad key\"}"));
+                  .WithBody("{\"code\":\"INVALID_API_KEY\",\"message\":\"bad key\"}"));
 
         // MaxRetries=0 keeps the test fast — 401 isn't retried anyway, but explicit
         // is better than relying on it.

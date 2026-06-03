@@ -81,13 +81,16 @@ internal static class ErrorParsing
 
     private static string DefaultCodeFor(int status) => status switch
     {
-        400 or 422 => PoliPageErrorCode.Validation,
-        401 => PoliPageErrorCode.Unauthorized,
+        400 or 422 => PoliPageErrorCode.ValidationError,
+        401 => PoliPageErrorCode.InvalidApiKey,
         402 => PoliPageErrorCode.PaymentRequired,
         403 => PoliPageErrorCode.Forbidden,
         404 => PoliPageErrorCode.NotFound,
         410 => PoliPageErrorCode.Gone,
-        429 => PoliPageErrorCode.RateLimit,
+        // 429 falls through to QuotaExceeded — the API discriminates QUOTA_EXCEEDED vs
+        // OVERAGE_CAP_EXCEEDED in the body; this is only the default when the body
+        // has no `code`. Callers should branch on PoliPageException.IsRateLimitError().
+        429 => PoliPageErrorCode.QuotaExceeded,
         _ => PoliPageErrorCode.Unknown,
     };
 

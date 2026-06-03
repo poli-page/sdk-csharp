@@ -88,33 +88,33 @@ public sealed class ErrorMappingTests
     // ------------------------------------------------------------------ //
 
     [Fact]
-    public async Task Status_400_throws_PoliPageValidationException_with_VALIDATION_code()
+    public async Task Status_400_throws_PoliPageValidationException_with_VALIDATION_ERROR_code()
     {
         using var harness = StartServerAndClient();
-        StubError(harness.Server, 400, ErrorJson("VALIDATION", "template is required"));
+        StubError(harness.Server, 400, ErrorJson("VALIDATION_ERROR", "template is required"));
 
         var act = async () => await CallRenderAsync(harness.Client);
 
         var ex = await act.Should().ThrowAsync<PoliPageValidationException>();
-        ex.Which.Code.Should().Be("VALIDATION");
+        ex.Which.Code.Should().Be("VALIDATION_ERROR");
         ex.Which.StatusCode.Should().Be(400);
         ex.Which.Message.Should().Be("template is required");
     }
 
     // ------------------------------------------------------------------ //
-    // 2. 401 → PoliPageAuthException / UNAUTHORIZED
+    // 2. 401 → PoliPageAuthException / INVALID_API_KEY
     // ------------------------------------------------------------------ //
 
     [Fact]
-    public async Task Status_401_throws_PoliPageAuthException_with_UNAUTHORIZED_code()
+    public async Task Status_401_throws_PoliPageAuthException_with_INVALID_API_KEY_code()
     {
         using var harness = StartServerAndClient();
-        StubError(harness.Server, 401, ErrorJson("UNAUTHORIZED", "Invalid API key"));
+        StubError(harness.Server, 401, ErrorJson("INVALID_API_KEY", "Invalid API key"));
 
         var act = async () => await CallRenderAsync(harness.Client);
 
         var ex = await act.Should().ThrowAsync<PoliPageAuthException>();
-        ex.Which.Code.Should().Be("UNAUTHORIZED");
+        ex.Which.Code.Should().Be("INVALID_API_KEY");
         ex.Which.StatusCode.Should().Be(401);
         ex.Which.Message.Should().Be("Invalid API key");
     }
@@ -229,12 +229,12 @@ public sealed class ErrorMappingTests
     public async Task Status_422_throws_PoliPageValidationException()
     {
         using var harness = StartServerAndClient();
-        StubError(harness.Server, 422, ErrorJson("VALIDATION", "data field must be an object"));
+        StubError(harness.Server, 422, ErrorJson("VALIDATION_ERROR", "data field must be an object"));
 
         var act = async () => await CallRenderAsync(harness.Client);
 
         var ex = await act.Should().ThrowAsync<PoliPageValidationException>();
-        ex.Which.Code.Should().Be("VALIDATION");
+        ex.Which.Code.Should().Be("VALIDATION_ERROR");
         ex.Which.StatusCode.Should().Be(422);
     }
 
@@ -249,13 +249,13 @@ public sealed class ErrorMappingTests
         StubError(
             harness.Server,
             429,
-            ErrorJson("RATE_LIMIT", "Too many requests"),
+            ErrorJson("QUOTA_EXCEEDED", "Too many requests"),
             extraHeaders: new Dictionary<string, string> { ["Retry-After"] = "15" });
 
         var act = async () => await CallRenderAsync(harness.Client);
 
         var ex = await act.Should().ThrowAsync<PoliPageRateLimitException>();
-        ex.Which.Code.Should().Be("RATE_LIMIT");
+        ex.Which.Code.Should().Be("QUOTA_EXCEEDED");
         ex.Which.StatusCode.Should().Be(429);
         ex.Which.RetryAfter.Should().Be(TimeSpan.FromSeconds(15));
     }
@@ -271,7 +271,7 @@ public sealed class ErrorMappingTests
         StubError(
             harness.Server,
             429,
-            ErrorJson("RATE_LIMIT", "Too many requests"),
+            ErrorJson("QUOTA_EXCEEDED", "Too many requests"),
             extraHeaders: new Dictionary<string, string> { ["Retry-After"] = "120" });
 
         var act = async () => await CallRenderAsync(harness.Client);
@@ -294,7 +294,7 @@ public sealed class ErrorMappingTests
         StubError(
             harness.Server,
             429,
-            ErrorJson("RATE_LIMIT", "Too many requests"),
+            ErrorJson("QUOTA_EXCEEDED", "Too many requests"),
             extraHeaders: new Dictionary<string, string> { ["Retry-After"] = retryAt });
 
         var act = async () => await CallRenderAsync(harness.Client);
@@ -373,7 +373,7 @@ public sealed class ErrorMappingTests
     public async Task Exception_carries_RequestId_from_envelope()
     {
         using var harness = StartServerAndClient();
-        StubError(harness.Server, 401, ErrorJson("UNAUTHORIZED", "Bad key", requestId: "req-abc-123"));
+        StubError(harness.Server, 401, ErrorJson("INVALID_API_KEY", "Bad key", requestId: "req-abc-123"));
 
         var act = async () => await CallRenderAsync(harness.Client);
 
@@ -411,7 +411,7 @@ public sealed class ErrorMappingTests
     {
         using var harness = StartServerAndClient();
         // Envelope has only code, no message field.
-        StubError(harness.Server, 400, @"{""code"":""VALIDATION""}");
+        StubError(harness.Server, 400, @"{""code"":""VALIDATION_ERROR""}");
 
         var act = async () => await CallRenderAsync(harness.Client);
 

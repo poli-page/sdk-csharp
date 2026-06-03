@@ -22,14 +22,14 @@ public sealed class PoliPageRateLimitException : PoliPageException
 
     /// <summary>Initialises a new instance of <see cref="PoliPageRateLimitException"/> with default values.</summary>
     public PoliPageRateLimitException()
-        : base(PoliPageErrorCode.RateLimit, 429, "Rate limit exceeded.")
+        : base(PoliPageErrorCode.QuotaExceeded, 429, "Rate limit exceeded.")
     {
     }
 
     /// <summary>Initialises a new instance of <see cref="PoliPageRateLimitException"/> with the specified message.</summary>
     /// <param name="message">A human-readable description of the error.</param>
     public PoliPageRateLimitException(string message)
-        : base(PoliPageErrorCode.RateLimit, 429, message)
+        : base(PoliPageErrorCode.QuotaExceeded, 429, message)
     {
     }
 
@@ -37,7 +37,7 @@ public sealed class PoliPageRateLimitException : PoliPageException
     /// <param name="message">A human-readable description of the error.</param>
     /// <param name="innerException">The exception that is the cause of the current exception.</param>
     public PoliPageRateLimitException(string message, Exception innerException)
-        : base(PoliPageErrorCode.RateLimit, 429, message, innerException: innerException)
+        : base(PoliPageErrorCode.QuotaExceeded, 429, message, innerException: innerException)
     {
     }
 

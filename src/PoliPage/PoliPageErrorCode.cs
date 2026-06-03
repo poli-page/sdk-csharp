@@ -8,8 +8,11 @@ namespace PoliPage;
 /// </summary>
 public static class PoliPageErrorCode
 {
-    /// <summary>The API key is missing or invalid.</summary>
-    public const string Unauthorized = "UNAUTHORIZED";
+    /// <summary>No <c>Authorization</c> header was supplied (HTTP 401).</summary>
+    public const string MissingApiKey = "MISSING_API_KEY";
+
+    /// <summary>The supplied API key is not recognised (HTTP 401).</summary>
+    public const string InvalidApiKey = "INVALID_API_KEY";
 
     /// <summary>The API key does not have permission to perform this action.</summary>
     public const string Forbidden = "FORBIDDEN";
@@ -26,11 +29,11 @@ public static class PoliPageErrorCode
     /// <summary>The requested resource has been permanently removed.</summary>
     public const string Gone = "GONE";
 
-    /// <summary>One or more request parameters failed validation.</summary>
-    public const string Validation = "VALIDATION";
+    /// <summary>One or more request parameters failed validation (HTTP 400).</summary>
+    public const string ValidationError = "VALIDATION_ERROR";
 
-    /// <summary>The request was rate-limited; slow down and retry.</summary>
-    public const string RateLimit = "RATE_LIMIT";
+    // RATE_LIMIT removed — the API uses QuotaExceeded / OverageCapExceeded with HTTP 429.
+    // Use PoliPageException.IsRateLimitError() to check by status instead of by code.
 
     /// <summary>The request timed out before the server responded.</summary>
     public const string Timeout = "TIMEOUT";

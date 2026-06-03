@@ -230,7 +230,7 @@ public sealed class RetryHandlerTests
                .RespondWith(Response.Create()
                    .WithStatusCode(400)
                    .WithHeader("Content-Type", "application/json")
-                   .WithBody(@"{""code"":""VALIDATION"",""message"":""bad input""}"));
+                   .WithBody(@"{""code"":""VALIDATION_ERROR"",""message"":""bad input""}"));
 
         var act = async () => await RenderAsync(harness.Client);
 

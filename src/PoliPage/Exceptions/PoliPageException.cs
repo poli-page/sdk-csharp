@@ -8,7 +8,7 @@ namespace PoliPage;
 public class PoliPageException : Exception
 {
     /// <summary>
-    /// The wire-level error code returned by the API (e.g. <c>"UNAUTHORIZED"</c>).
+    /// The wire-level error code returned by the API (e.g. <c>"INVALID_API_KEY"</c>).
     /// Use <see cref="PoliPageErrorCode"/> constants to compare without magic strings.
     /// </summary>
     public string Code { get; }
