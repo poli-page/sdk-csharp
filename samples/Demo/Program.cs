@@ -9,15 +9,16 @@
 //
 // Open the generated files to confirm everything works:
 //
-//   - samples/Demo/output/render.pdf   (from client.Render.PdfAsync())
-//   - samples/Demo/output/stream.pdf   (from client.Render.PdfStreamAsync())
-//   - samples/Demo/output/file.pdf     (from client.RenderToFileAsync())
-//   - samples/Demo/output/preview.html (from client.Documents.PreviewAsync(id),
-//                                       after storing the document via
-//                                       client.Render.DocumentAsync())
+//   - samples/Demo/output/render.pdf              (Render.PdfAsync)
+//   - samples/Demo/output/stream.pdf              (Render.PdfStreamAsync)
+//   - samples/Demo/output/file.pdf                (RenderToFileAsync)
+//   - samples/Demo/output/render_preview.html     (Render.PreviewAsync)
+//   - samples/Demo/output/documents_preview.html  (Documents.PreviewAsync, after storing)
+//   - samples/Demo/output/thumbs/page_<n>.png     (Documents.ThumbnailsAsync, Starter+ tier)
 //
-// Note: thumbnails are available against stored documents via
-// client.Documents.ThumbnailsAsync() — that requires Starter+ tier.
+// Step 10 deliberately triggers a 400 to exercise the error-handling story —
+// the demo catches PoliPageException and prints the exposed fields. The
+// script does NOT crash there.
 
 using System.Text;
 using PoliPage;
@@ -62,7 +63,7 @@ using var client = new PoliPageClient(new PoliPageClientOptions
         + Ansi.Dim($"{ex.GetType().Name}: {ex.Message}")),
 });
 
-const int totalSteps = 6;
+const int totalSteps = 10;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. Render.PdfAsync() — fetch PDF bytes into memory
@@ -106,36 +107,97 @@ Console.WriteLine($"  wrote {filePath}");
 Console.WriteLine($"  {Ansi.Dim("open:")} {Ansi.FileLink(filePath)}");
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. Render.DocumentAsync() — render and store the document, return its descriptor
+// 4. Render.PreviewAsync() — paginated HTML for an editor / review UI
+//    Use when: rendering a live editor, snapshot tests in CI, side-by-side
+//    diff of template changes. No file is written by the engine — you get the
+//    HTML in-memory. Useful before committing to a PDF render.
+// ─────────────────────────────────────────────────────────────────────────────
+Ansi.Step(4, totalSteps, "Render.PreviewAsync() — paginated HTML");
+var renderPreview = await client.Render.PreviewAsync(projectInput);
+var renderPreviewPath = Path.Combine(outDir, "render_preview.html");
+await File.WriteAllTextAsync(renderPreviewPath, renderPreview.Html);
+Console.WriteLine(
+    $"  {Ansi.Bold(renderPreview.TotalPages.ToString())} page(s), {renderPreview.Html.Length} chars,"
+    + $" env={renderPreview.Environment}");
+Console.WriteLine($"  {Ansi.Dim("open:")} {Ansi.FileLink(renderPreviewPath)}");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. Render.DocumentAsync() — render and store the document, return its descriptor
 //    Use when: you want the document persisted server-side for later access
 //    (preview, thumbnails, re-download) without auto-fetching the PDF bytes.
 //    Returns a DocumentDescriptor — persist `DocumentId` in your DB.
 // ─────────────────────────────────────────────────────────────────────────────
-Ansi.Step(4, totalSteps, "Render.DocumentAsync() — store the document, return the descriptor");
+Ansi.Step(5, totalSteps, "Render.DocumentAsync() — store the document, return the descriptor");
 var doc = await client.Render.DocumentAsync(projectInput);
 Console.WriteLine($"  {Ansi.Dim("documentId:")} {Ansi.Bold(doc.DocumentId)}");
+Console.WriteLine($"  {Ansi.Dim("pageCount:")} {doc.PageCount}  {Ansi.Dim("sizeBytes:")} {doc.SizeBytes}");
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5. Documents.PreviewAsync(id) — get the stored document's HTML preview
+// 6. Documents.GetAsync(id) — refresh the descriptor (fresh presigned URL)
+//    Use when: the original presigned URL has expired (~15 min TTL) and you
+//    need a new one. Returns the same DocumentDescriptor shape.
+// ─────────────────────────────────────────────────────────────────────────────
+Ansi.Step(6, totalSteps, "Documents.GetAsync(id) — refresh descriptor");
+var fetched = await client.Documents.GetAsync(doc.DocumentId);
+Console.WriteLine($"  {Ansi.Dim("refreshed presigned URL valid until:")} {fetched.ExpiresAt:O}");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. Documents.ThumbnailsAsync(id, options) — per-page PNG images
+//    Use when: rendering a thumbnail strip, a document picker, OG images.
+//    Tier-gated on the API side: Free tier returns 403 THUMBNAILS_NOT_AVAILABLE.
+//    Demo soft-skips on that code to keep the script useful on Free keys.
+// ─────────────────────────────────────────────────────────────────────────────
+Ansi.Step(7, totalSteps, "Documents.ThumbnailsAsync(id) — page images (Starter+ tier)");
+try
+{
+    var thumbs = await client.Documents.ThumbnailsAsync(
+        doc.DocumentId,
+        new ThumbnailOptions { Width = 320, Format = ThumbnailFormat.Png });
+    var thumbDir = Path.Combine(outDir, "thumbs");
+    Directory.CreateDirectory(thumbDir);
+    foreach (var thumb in thumbs)
+    {
+        var thumbPath = Path.Combine(thumbDir, $"page_{thumb.PageNumber}.png");
+        await File.WriteAllBytesAsync(thumbPath, Convert.FromBase64String(thumb.Base64Data));
+        Console.WriteLine($"  wrote page_{thumb.PageNumber}.png ({thumb.Width}x{thumb.Height})");
+    }
+    Console.WriteLine($"  {Ansi.Dim("open:")} {Ansi.FileLink(thumbDir)}");
+}
+catch (PoliPageException ex) when (ex.Code == "THUMBNAILS_NOT_AVAILABLE")
+{
+    Console.WriteLine($"  {Ansi.Yellow("skipped")} — {ex.Code} (Starter+ feature, not on Free)");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. Documents.PreviewAsync(id) — get the stored document's HTML preview
 //    Use when: rendering a live editor over a stored document, building a
 //    review UI, snapshot tests in CI. No counter increments — the engine
 //    performs no work on this call. Returns { Html, PageCount }.
 // ─────────────────────────────────────────────────────────────────────────────
-Ansi.Step(5, totalSteps, "Documents.PreviewAsync(id) — stored document HTML (no engine work)");
+Ansi.Step(8, totalSteps, "Documents.PreviewAsync(id) — stored document HTML (no engine work)");
 var preview = await client.Documents.PreviewAsync(doc.DocumentId);
-var previewPath = Path.Combine(outDir, "preview.html");
+var previewPath = Path.Combine(outDir, "documents_preview.html");
 await File.WriteAllTextAsync(previewPath, preview.Html);
 Console.WriteLine($"  {Ansi.Bold(preview.PageCount.ToString())} page(s), {preview.Html.Length} chars");
 Console.WriteLine($"  {Ansi.Dim("open:")} {Ansi.FileLink(previewPath)}");
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 6. Error handling — DELIBERATELY trigger a failure, then catch it.
+// 9. Documents.DeleteAsync(id) — soft-delete the stored document
+//    Use when: cleaning up demo / test runs, GDPR-style erasure. The document
+//    is hidden from subsequent reads; re-delete returns Gone.
+// ─────────────────────────────────────────────────────────────────────────────
+Ansi.Step(9, totalSteps, "Documents.DeleteAsync(id) — soft-delete");
+await client.Documents.DeleteAsync(doc.DocumentId);
+Console.WriteLine($"  {Ansi.Green("✔")} deleted {doc.DocumentId}");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 10. Error handling — DELIBERATELY trigger a failure, then catch it.
 //    Every failure — API errors, network failures, timeouts, caller aborts —
 //    surfaces as `PoliPageException` (or a more specific subclass:
 //    PoliPageAuthException, PoliPageRateLimitException, etc.). Inspect `Code`,
 //    `StatusCode`, `RequestId`, or pattern-match on the subclass.
 // ─────────────────────────────────────────────────────────────────────────────
-Ansi.Step(6, totalSteps, "error handling — DEMO ONLY (we trigger an error on purpose)");
+Ansi.Step(10, totalSteps, "error handling — DEMO ONLY (we trigger an error on purpose)");
 Console.WriteLine(Ansi.Yellow("  ⚠  This step is intentional — the SDK is about to throw, but the"));
 Console.WriteLine(Ansi.Yellow("     demo will catch and inspect it. ") + Ansi.Bold("The demo is NOT crashing."));
 Console.WriteLine(Ansi.Dim("     (We send an invalid version string, expecting the API to return 400 INVALID_VERSION_FORMAT.)"));
