@@ -144,8 +144,11 @@ Console.WriteLine($"  {Ansi.Dim("refreshed presigned URL valid until:")} {fetche
 // ─────────────────────────────────────────────────────────────────────────────
 // 7. Documents.ThumbnailsAsync(id, options) — per-page PNG images
 //    Use when: rendering a thumbnail strip, a document picker, OG images.
-//    Tier-gated on the API side: Free tier returns 403 THUMBNAILS_NOT_AVAILABLE.
-//    Demo soft-skips on that code to keep the script useful on Free keys.
+//    Tier-gated on the API side: Free keys are rejected before any thumbnail
+//    work happens. The API returns 402 PAYMENT_REQUIRED or 403 FORBIDDEN /
+//    THUMBNAILS_NOT_AVAILABLE depending on the gating layer that catches the
+//    call. We treat any of those as "soft skip" so the demo keeps running on
+//    a Free key without lying about the surface.
 // ─────────────────────────────────────────────────────────────────────────────
 Ansi.Step(7, totalSteps, "Documents.ThumbnailsAsync(id) — page images (Starter+ tier)");
 try
@@ -163,9 +166,13 @@ try
     }
     Console.WriteLine($"  {Ansi.Dim("open:")} {Ansi.FileLink(thumbDir)}");
 }
-catch (PoliPageException ex) when (ex.Code == "THUMBNAILS_NOT_AVAILABLE")
+catch (PoliPageException ex) when (
+    ex.Code == "THUMBNAILS_NOT_AVAILABLE"
+    || ex is PoliPagePaymentRequiredException
+    || (ex is PoliPageAuthException && ex.StatusCode == 403))
 {
-    Console.WriteLine($"  {Ansi.Yellow("skipped")} — {ex.Code} (Starter+ feature, not on Free)");
+    Console.WriteLine(
+        $"  {Ansi.Yellow("skipped")} — {ex.Code} (HTTP {ex.StatusCode}) — Starter+ tier feature");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
