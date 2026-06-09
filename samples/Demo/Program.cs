@@ -161,7 +161,7 @@ try
     foreach (var thumb in thumbs)
     {
         var thumbPath = Path.Combine(thumbDir, $"page_{thumb.Page}.png");
-        await File.WriteAllBytesAsync(thumbPath, Convert.FromBase64String(thumb.Base64Data));
+        await File.WriteAllBytesAsync(thumbPath, Convert.FromBase64String(thumb.Data));
         Console.WriteLine($"  wrote page_{thumb.Page}.png ({thumb.Width}x{thumb.Height})");
     }
     Console.WriteLine($"  {Ansi.Dim("open:")} {Ansi.FileLink(thumbDir)}");

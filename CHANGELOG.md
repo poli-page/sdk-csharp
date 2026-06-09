@@ -18,6 +18,12 @@ for the first `1.0.0` release.
   canonical wire format used by every other Poli Page SDK (Node,
   Python, Ruby, Rust, Go, Java, PHP). The wire field is `page`, not
   `pageNumber`.
+- `Thumbnail.Format` renamed to `Thumbnail.ContentType` and is now a
+  MIME type (e.g., `"image/png"`, `"image/jpeg"`) instead of the
+  short format name (`"png"`, `"jpeg"`). Matches the canonical wire
+  field `contentType`.
+- `Thumbnail.Base64Data` renamed to `Thumbnail.Data` to match the
+  canonical wire field `data`.
 
 ### Planned
 

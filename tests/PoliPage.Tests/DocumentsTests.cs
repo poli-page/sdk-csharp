@@ -337,8 +337,8 @@ public sealed class DocumentsTests
     private const string SampleThumbnailsJson = """
         {
             "thumbnails": [
-                { "page": 1, "width": 320, "height": 452, "format": "png", "base64Data": "iVBOR..." },
-                { "page": 2, "width": 320, "height": 452, "format": "png", "base64Data": "iVBOR..." }
+                { "page": 1, "width": 320, "height": 452, "contentType": "image/png", "data": "iVBOR..." },
+                { "page": 2, "width": 320, "height": 452, "contentType": "image/png", "data": "iVBOR..." }
             ]
         }
         """;
@@ -360,8 +360,8 @@ public sealed class DocumentsTests
         thumbs.Should().HaveCount(2);
         thumbs[0].Page.Should().Be(1);
         thumbs[0].Width.Should().Be(320);
-        thumbs[0].Format.Should().Be("png");
-        thumbs[0].Base64Data.Should().StartWith("iVBOR");
+        thumbs[0].ContentType.Should().Be("image/png");
+        thumbs[0].Data.Should().StartWith("iVBOR");
         thumbs[1].Page.Should().Be(2);
     }
 

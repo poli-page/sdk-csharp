@@ -17,11 +17,11 @@ public sealed record Thumbnail
     [JsonPropertyName("height")]
     public required int Height { get; init; }
 
-    /// <summary>Image format as returned by the server (<c>"png"</c> or <c>"jpeg"</c>).</summary>
-    [JsonPropertyName("format")]
-    public required string Format { get; init; }
+    /// <summary>Image MIME type as returned by the server (e.g., <c>"image/png"</c>, <c>"image/jpeg"</c>).</summary>
+    [JsonPropertyName("contentType")]
+    public required string ContentType { get; init; }
 
     /// <summary>Base64-encoded image bytes.</summary>
-    [JsonPropertyName("base64Data")]
-    public required string Base64Data { get; init; }
+    [JsonPropertyName("data")]
+    public required string Data { get; init; }
 }
