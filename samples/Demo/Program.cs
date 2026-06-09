@@ -160,9 +160,9 @@ try
     Directory.CreateDirectory(thumbDir);
     foreach (var thumb in thumbs)
     {
-        var thumbPath = Path.Combine(thumbDir, $"page_{thumb.PageNumber}.png");
+        var thumbPath = Path.Combine(thumbDir, $"page_{thumb.Page}.png");
         await File.WriteAllBytesAsync(thumbPath, Convert.FromBase64String(thumb.Base64Data));
-        Console.WriteLine($"  wrote page_{thumb.PageNumber}.png ({thumb.Width}x{thumb.Height})");
+        Console.WriteLine($"  wrote page_{thumb.Page}.png ({thumb.Width}x{thumb.Height})");
     }
     Console.WriteLine($"  {Ansi.Dim("open:")} {Ansi.FileLink(thumbDir)}");
 }

@@ -12,6 +12,13 @@ Initial scaffolding for the Poli Page .NET SDK. Targets `net8.0` and
 [MIGRATION.md](MIGRATION.md#10) for the parity checklist) is the goal
 for the first `1.0.0` release.
 
+### Breaking changes
+
+- `Thumbnail.PageNumber` renamed to `Thumbnail.Page` to match the
+  canonical wire format used by every other Poli Page SDK (Node,
+  Python, Ruby, Rust, Go, Java, PHP). The wire field is `page`, not
+  `pageNumber`.
+
 ### Planned
 
 - `PoliPageClient` constructed via `new PoliPageClient(PoliPageClientOptions)`.

@@ -6,8 +6,8 @@ namespace PoliPage;
 public sealed record Thumbnail
 {
     /// <summary>1-based page number this thumbnail represents.</summary>
-    [JsonPropertyName("pageNumber")]
-    public required int PageNumber { get; init; }
+    [JsonPropertyName("page")]
+    public required int Page { get; init; }
 
     /// <summary>Rendered width in pixels.</summary>
     [JsonPropertyName("width")]
