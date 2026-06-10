@@ -33,7 +33,6 @@ and the `POLI_PAGE_API_KEY` env var:
 
 ```bash
 export POLI_PAGE_API_KEY=pp_test_...
-export POLI_PAGE_BASE_URL=https://api-develop.poli.page   # optional
 dotnet test --filter "Category=Integration"
 ```
 
