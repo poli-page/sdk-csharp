@@ -28,10 +28,13 @@ internal static class Backoff
             return ra > MaxDelay ? MaxDelay : ra;
         }
 
-        // Use long arithmetic to avoid TimeSpan overflow on large attempt numbers.
-        // Math.Pow(2, attempt-1) is fine for small attempt counts; cap explicitly.
-        var ticks = (long)(baseDelay.Ticks * Math.Pow(2, attempt - 1) * jitterFactor);
-        var raw = TimeSpan.FromTicks(Math.Max(0, ticks));
-        return raw > MaxDelay ? MaxDelay : raw;
+        // Cap on the double BEFORE casting to long. For large attempt counts the
+        // product exceeds long.MaxValue, and (long)hugeDouble is platform-defined:
+        // x86_64 returns long.MinValue, ARM64 saturates to long.MaxValue. Comparing
+        // doubles dodges the cast entirely on the cap and zero branches.
+        var rawTicks = baseDelay.Ticks * Math.Pow(2, attempt - 1) * jitterFactor;
+        if (rawTicks >= MaxDelay.Ticks) return MaxDelay;
+        if (rawTicks <= 0) return TimeSpan.Zero;
+        return TimeSpan.FromTicks((long)rawTicks);
     }
 }
