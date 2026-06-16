@@ -12,6 +12,11 @@ concurrency:
 
 permissions:
   contents: read
+  # Required by codecov-action's tokenless (OIDC) upload on public repos —
+  # Codecov rejects plain tokenless uploads on the default (protected)
+  # branch, so OIDC is the way. Mirrors the sdk-node / sdk-go / sdk-ruby /
+  # sdk-php / sdk-rust setup.
+  id-token: write
 
 jobs:
   test:
@@ -118,14 +123,15 @@ jobs:
           path: '**/test-results.trx'
 
       # Single canonical upload (Ubuntu / net10.0) so the report isn't
-      # quadruple-counted across the matrix. This is a public repo, so the
-      # v5 action does a tokenless upload when CODECOV_TOKEN is unset;
-      # setting the secret is still recommended (avoids public-repo rate
-      # limits and lets forked-PR uploads attribute correctly).
+      # quadruple-counted across the matrix. `use_oidc: true` authenticates
+      # via the GitHub-issued OIDC token instead of a long-lived upload
+      # token. Codecov rejects plain tokenless uploads on the default
+      # branch ("Token required because branch is protected"); OIDC avoids
+      # both that rejection and the secret-rotation overhead.
       - name: Upload coverage to Codecov
         if: matrix.framework == 'net10.0' && matrix.os == 'ubuntu-latest' && hashFiles('**/coverage.cobertura.xml') != ''
         uses: codecov/codecov-action@015f24e6818733317a2da2edd6290ab26238649a # v5.0.7
         with:
           files: '**/coverage.cobertura.xml'
           fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
