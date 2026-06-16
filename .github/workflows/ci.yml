@@ -66,7 +66,10 @@ jobs:
       - name: Build
         run: |
           if ls src/*/*.csproj 1> /dev/null 2>&1; then
-            dotnet build --configuration Release --no-restore --framework ${{ matrix.framework }} -warnaserror
+            # Build every TargetFramework on every leg so the pack step (which
+            # runs once and needs all TFMs on disk) never hits NU5026. The
+            # matrix exists to vary the test runtime, not to build partially.
+            dotnet build --configuration Release --no-restore -warnaserror
           else
             echo "::notice::No src/*/*.csproj yet — skipping build."
           fi
@@ -115,8 +118,10 @@ jobs:
           path: '**/test-results.trx'
 
       # Single canonical upload (Ubuntu / net10.0) so the report isn't
-      # quadruple-counted across the matrix. Needs CODECOV_TOKEN as a repo
-      # secret for private repos; without it the action no-ops cleanly.
+      # quadruple-counted across the matrix. This is a public repo, so the
+      # v5 action does a tokenless upload when CODECOV_TOKEN is unset;
+      # setting the secret is still recommended (avoids public-repo rate
+      # limits and lets forked-PR uploads attribute correctly).
       - name: Upload coverage to Codecov
         if: matrix.framework == 'net10.0' && matrix.os == 'ubuntu-latest' && hashFiles('**/coverage.cobertura.xml') != ''
         uses: codecov/codecov-action@015f24e6818733317a2da2edd6290ab26238649a # v5.0.7

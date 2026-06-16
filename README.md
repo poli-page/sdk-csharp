@@ -7,7 +7,7 @@
 
 [![CI](https://github.com/poli-page/sdk-csharp/actions/workflows/ci.yml/badge.svg)](https://github.com/poli-page/sdk-csharp/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/poli-page/sdk-csharp/actions/workflows/codeql.yml/badge.svg)](https://github.com/poli-page/sdk-csharp/actions/workflows/codeql.yml)
-[![codecov](https://codecov.io/gh/poli-page/sdk-csharp/branch/main/graph/badge.svg)](https://codecov.io/gh/poli-page/sdk-csharp)
+[![codecov](https://codecov.io/github/poli-page/sdk-csharp/graph/badge.svg)](https://codecov.io/github/poli-page/sdk-csharp)
 [![docs](https://img.shields.io/badge/docs-online-brightgreen)](https://poli-page.github.io/sdk-csharp)
 
 Official .NET SDK for [Poli Page](https://poli.page) — render polished PDFs from HTML templates via the Poli Page API.

@@ -1,0 +1,51 @@
+# Codecov configuration for poli-page/sdk-csharp.
+#
+# Validate after changes:
+#   curl -X POST --data-binary @codecov.yml https://codecov.io/validate
+
+codecov:
+  require_ci_to_pass: true
+  # Don't post a status until at least one upload has arrived. Avoids
+  # spurious red checks when the canonical matrix leg hasn't finished yet.
+  notify:
+    wait_for_ci: true
+
+coverage:
+  precision: 2
+  round: down
+  range: "70...95"
+
+  status:
+    project:
+      default:
+        target: auto
+        # Don't fail a PR for tiny drops (rounding, refactors that move
+        # code between covered and uncovered files).
+        threshold: 1%
+        informational: false
+        only_pulls: false
+    patch:
+      default:
+        # New code on a PR should be reasonably covered, but not strict
+        # enough to block legitimate work (e.g. a one-line plumbing fix).
+        target: 80%
+        threshold: 5%
+        informational: false
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: true
+  require_base: false
+  require_head: true
+
+# Exclude code that should not count toward project coverage. The SDK
+# itself lives under src/PoliPage; everything else is harness/scaffolding.
+ignore:
+  - "tests/**/*"
+  - "examples/**/*"
+  - "samples/**/*"
+  - "scripts/**/*"
+  - "**/*.Designer.cs"
+  - "**/obj/**"
+  - "**/bin/**"
