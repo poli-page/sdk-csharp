@@ -1,9 +1,14 @@
 # Poli Page SDK for .NET
 
 [![NuGet](https://img.shields.io/nuget/v/PoliPage.svg)](https://www.nuget.org/packages/PoliPage)
-[![CI](https://github.com/poli-page/sdk-csharp/actions/workflows/ci.yml/badge.svg)](https://github.com/poli-page/sdk-csharp/actions/workflows/ci.yml)
 [![NuGet downloads](https://img.shields.io/nuget/dt/PoliPage.svg)](https://www.nuget.org/packages/PoliPage)
-[![License](https://img.shields.io/github/license/poli-page/sdk-csharp)](LICENSE)
+[![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%2010.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+[![CI](https://github.com/poli-page/sdk-csharp/actions/workflows/ci.yml/badge.svg)](https://github.com/poli-page/sdk-csharp/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/poli-page/sdk-csharp/actions/workflows/codeql.yml/badge.svg)](https://github.com/poli-page/sdk-csharp/actions/workflows/codeql.yml)
+[![codecov](https://codecov.io/gh/poli-page/sdk-csharp/branch/main/graph/badge.svg)](https://codecov.io/gh/poli-page/sdk-csharp)
+[![docs](https://img.shields.io/badge/docs-online-brightgreen)](https://poli-page.github.io/sdk-csharp)
 
 Official .NET SDK for [Poli Page](https://poli.page) — render polished PDFs from HTML templates via the Poli Page API.
 
