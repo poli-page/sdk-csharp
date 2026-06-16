@@ -6,6 +6,7 @@
 [![Codeql](https://img.shields.io/github/actions/workflow/status/poli-page/sdk-csharp/codeql.yml?branch=main&style=flat&logo=github&logoColor=ffffff&label=Codeql)](https://github.com/poli-page/sdk-csharp/actions/workflows/codeql.yml)
 [![Coverage](https://img.shields.io/codecov/c/github/poli-page/sdk-csharp?style=flat&logo=codecov&logoColor=ffffff&label=Coverage)](https://codecov.io/github/poli-page/sdk-csharp)
 [![.Net](https://img.shields.io/badge/.Net-8.0%20%7C%2010.0-blue?style=flat&logo=dotnet&logoColor=ffffff)](https://dotnet.microsoft.com/)
+[![Deps](https://img.shields.io/badge/Deps-up%20to%20date-brightgreen?style=flat&logo=dotnet&logoColor=ffffff)](https://github.com/poli-page/sdk-csharp/network/dependencies)
 [![Docs](https://img.shields.io/badge/Docs-online-brightgreen?style=flat&logo=readthedocs&logoColor=ffffff)](https://poli-page.github.io/sdk-csharp)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat&logo=gnu&logoColor=ffffff)](LICENSE)
 
