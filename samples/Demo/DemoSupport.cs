@@ -10,12 +10,12 @@ internal static class Ansi
         !Console.IsOutputRedirected
         && Environment.GetEnvironmentVariable("NO_COLOR") != "1";
 
-    public static string Bold(string s)   => UseColor ? $"\x1b[1m{s}\x1b[0m"  : s;
-    public static string Dim(string s)    => UseColor ? $"\x1b[2m{s}\x1b[0m"  : s;
-    public static string Red(string s)    => UseColor ? $"\x1b[31m{s}\x1b[0m" : s;
-    public static string Green(string s)  => UseColor ? $"\x1b[32m{s}\x1b[0m" : s;
+    public static string Bold(string s) => UseColor ? $"\x1b[1m{s}\x1b[0m" : s;
+    public static string Dim(string s) => UseColor ? $"\x1b[2m{s}\x1b[0m" : s;
+    public static string Red(string s) => UseColor ? $"\x1b[31m{s}\x1b[0m" : s;
+    public static string Green(string s) => UseColor ? $"\x1b[32m{s}\x1b[0m" : s;
     public static string Yellow(string s) => UseColor ? $"\x1b[33m{s}\x1b[0m" : s;
-    public static string Cyan(string s)   => UseColor ? $"\x1b[36m{s}\x1b[0m" : s;
+    public static string Cyan(string s) => UseColor ? $"\x1b[36m{s}\x1b[0m" : s;
 
     public static void Step(int n, int total, string name)
     {
@@ -61,7 +61,7 @@ internal static class RepoPaths
 // value back to `.env` so subsequent runs are silent.
 internal static class EnvFile
 {
-    private const string ApiKeyVar  = "POLI_PAGE_API_KEY";
+    private const string ApiKeyVar = "POLI_PAGE_API_KEY";
     private const string BaseUrlVar = "POLI_PAGE_BASE_URL";
     private const string DefaultBaseUrl = "https://api.poli.page";
 
