@@ -91,7 +91,7 @@ public sealed class RenderTests
     private static WireMock.Logging.ILogEntry PostEntry(WireMockServer server)
     {
         return server.LogEntries
-            .Where(e => e.RequestMessage.Method == "POST")
+            .Where(e => e.RequestMessage!.Method == "POST")
             .Should().ContainSingle("there should be exactly one POST request to the API")
             .Subject;
     }
@@ -145,8 +145,8 @@ public sealed class RenderTests
         await client.Render.PdfAsync(DefaultInput());
 
         var entry = PostEntry(server);
-        entry.RequestMessage.Method.Should().Be("POST");
-        entry.RequestMessage.Path.Should().Be("/v1/render");
+        entry.RequestMessage!.Method.Should().Be("POST");
+        entry.RequestMessage!.Path.Should().Be("/v1/render");
     }
 
     // ------------------------------------------------------------------ //
@@ -163,7 +163,7 @@ public sealed class RenderTests
         await client.Render.PdfAsync(DefaultInput());
 
         var entry = PostEntry(server);
-        var value = GetSingleHeader(entry.RequestMessage.Headers!, "Authorization");
+        var value = GetSingleHeader(entry.RequestMessage!.Headers!, "Authorization");
         value.Should().Be("Bearer pp_test_unit");
     }
 
@@ -181,7 +181,7 @@ public sealed class RenderTests
         await client.Render.PdfAsync(DefaultInput());
 
         var entry = PostEntry(server);
-        var ua = GetSingleHeader(entry.RequestMessage.Headers!, "User-Agent");
+        var ua = GetSingleHeader(entry.RequestMessage!.Headers!, "User-Agent");
         ua.Should().StartWith("poli-page-sdk-dotnet/");
     }
 
@@ -202,8 +202,8 @@ public sealed class RenderTests
         await client.Render.PdfAsync(DefaultInput());
 
         var entry = PostEntry(server);
-        entry.RequestMessage.Headers.Should().ContainKey("Accept");
-        entry.RequestMessage.Headers!["Accept"].Should().Contain("application/json");
+        entry.RequestMessage!.Headers.Should().ContainKey("Accept");
+        entry.RequestMessage!.Headers!["Accept"].Should().Contain("application/json");
     }
 
     // ------------------------------------------------------------------ //
@@ -220,7 +220,7 @@ public sealed class RenderTests
         await client.Render.PdfAsync(DefaultInput());
 
         var entry = PostEntry(server);
-        var ct = GetSingleHeader(entry.RequestMessage.Headers!, "Content-Type");
+        var ct = GetSingleHeader(entry.RequestMessage!.Headers!, "Content-Type");
         ct.Should().StartWith("application/json");
     }
 
@@ -238,7 +238,7 @@ public sealed class RenderTests
         await client.Render.PdfAsync(DefaultInput());
 
         var entry = PostEntry(server);
-        var key = GetSingleHeader(entry.RequestMessage.Headers!, "Idempotency-Key");
+        var key = GetSingleHeader(entry.RequestMessage!.Headers!, "Idempotency-Key");
         Guid.TryParse(key, out var parsed).Should().BeTrue("the auto-generated key must be a valid UUID");
         parsed.Should().NotBe(Guid.Empty);
     }
@@ -257,7 +257,7 @@ public sealed class RenderTests
         await client.Render.PdfAsync(DefaultInput(), new RequestOptions { IdempotencyKey = "inv-INV-001" });
 
         var entry = PostEntry(server);
-        var key = GetSingleHeader(entry.RequestMessage.Headers!, "Idempotency-Key");
+        var key = GetSingleHeader(entry.RequestMessage!.Headers!, "Idempotency-Key");
         key.Should().Be("inv-INV-001");
     }
 
@@ -283,7 +283,7 @@ public sealed class RenderTests
         await client.Render.PdfAsync(input);
 
         var entry = PostEntry(server);
-        var rawBody = entry.RequestMessage.Body;
+        var rawBody = entry.RequestMessage!.Body;
         rawBody.Should().NotBeNullOrEmpty("request must have a JSON body");
         var body = JsonDocument.Parse(rawBody!).RootElement;
 
@@ -374,7 +374,7 @@ public sealed class RenderTests
             });
 
         var entry = PostEntry(server);
-        var value = GetSingleHeader(entry.RequestMessage.Headers!, "X-Trace-Id");
+        var value = GetSingleHeader(entry.RequestMessage!.Headers!, "X-Trace-Id");
         value.Should().Be("abc");
     }
 
@@ -409,7 +409,7 @@ public sealed class RenderTests
         // PdfAsync issues POST /v1/render + GET /storage/... so two entries are expected;
         // we filter to the POST as the signal that the API base address was honored.
         pdf[..4].Should().Equal(0x25, 0x50, 0x44, 0x46); // %PDF
-        PostEntry(server).RequestMessage.Path.Should().Be("/v1/render");
+        PostEntry(server).RequestMessage!.Path.Should().Be("/v1/render");
     }
 
     // ------------------------------------------------------------------ //
@@ -458,7 +458,7 @@ public sealed class RenderTests
         var pdf = await client.Render.PdfAsync(DefaultInput());
 
         pdf[..4].Should().Equal(0x25, 0x50, 0x44, 0x46);
-        PostEntry(server).RequestMessage.Path.Should().Be("/api/v1/render");
+        PostEntry(server).RequestMessage!.Path.Should().Be("/api/v1/render");
     }
 
     // ------------------------------------------------------------------ //
@@ -596,8 +596,8 @@ public sealed class RenderTests
         await client.Render.DocumentAsync(DefaultInput());
 
         var entry = PostEntry(server);
-        entry.RequestMessage.Headers!["Accept"].Should().Contain("application/json");
-        entry.RequestMessage.Headers["Accept"].Should().NotContain("application/pdf");
+        entry.RequestMessage!.Headers!["Accept"].Should().Contain("application/json");
+        entry.RequestMessage!.Headers["Accept"].Should().NotContain("application/pdf");
     }
 
     [Fact]
@@ -681,8 +681,8 @@ public sealed class RenderTests
         await descriptor.DownloadPdfAsync();
 
         var downloadEntry = server.LogEntries.Should().Contain(e =>
-            e.RequestMessage.Path == "/storage/doc_abc.pdf").Subject;
-        downloadEntry.RequestMessage.Headers.Should().NotContainKey("Authorization",
+            e.RequestMessage!.Path == "/storage/doc_abc.pdf").Subject;
+        downloadEntry.RequestMessage!.Headers.Should().NotContainKey("Authorization",
             "the download transport must never carry the SDK's API auth header");
     }
 
@@ -772,8 +772,8 @@ public sealed class RenderTests
         await client.Render.PreviewAsync(DefaultInput());
 
         var entry = PostEntry(server);
-        entry.RequestMessage.Path.Should().Be("/v1/render/preview");
-        entry.RequestMessage.Headers!["Accept"].Should().Contain("application/json");
+        entry.RequestMessage!.Path.Should().Be("/v1/render/preview");
+        entry.RequestMessage!.Headers!["Accept"].Should().Contain("application/json");
     }
 
     [Fact]

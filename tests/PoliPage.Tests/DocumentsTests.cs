@@ -83,10 +83,10 @@ public sealed class DocumentsTests
         await harness.Client.Documents.GetAsync("doc_abc123");
 
         var entry = harness.Server.LogEntries.Should().ContainSingle().Subject;
-        entry.RequestMessage.Method.Should().Be("GET");
-        entry.RequestMessage.Path.Should().Be("/v1/documents/doc_abc123");
-        entry.RequestMessage.Headers!["Authorization"].Should().Contain("Bearer pp_test_unit");
-        entry.RequestMessage.Headers["Accept"].Should().Contain("application/json");
+        entry.RequestMessage!.Method.Should().Be("GET");
+        entry.RequestMessage!.Path.Should().Be("/v1/documents/doc_abc123");
+        entry.RequestMessage!.Headers!["Authorization"].Should().Contain("Bearer pp_test_unit");
+        entry.RequestMessage!.Headers["Accept"].Should().Contain("application/json");
     }
 
     [Fact]
@@ -174,8 +174,8 @@ public sealed class DocumentsTests
         await harness.Client.Documents.DeleteAsync("doc_abc123");
 
         var entry = harness.Server.LogEntries.Should().ContainSingle().Subject;
-        entry.RequestMessage.Method.Should().Be("DELETE");
-        entry.RequestMessage.Path.Should().Be("/v1/documents/doc_abc123");
+        entry.RequestMessage!.Method.Should().Be("DELETE");
+        entry.RequestMessage!.Path.Should().Be("/v1/documents/doc_abc123");
     }
 
     [Fact]
@@ -299,7 +299,7 @@ public sealed class DocumentsTests
         await harness.Client.Documents.PreviewAsync("doc_abc123");
 
         var entry = harness.Server.LogEntries.Should().ContainSingle().Subject;
-        entry.RequestMessage.Headers!["Accept"].Should().Contain("text/html");
+        entry.RequestMessage!.Headers!["Accept"].Should().Contain("text/html");
     }
 
     [Fact]
@@ -380,7 +380,7 @@ public sealed class DocumentsTests
             new ThumbnailOptions { Width = 320, Format = ThumbnailFormat.Jpeg });
 
         var entry = harness.Server.LogEntries.Should().ContainSingle().Subject;
-        var body = JsonDocument.Parse(entry.RequestMessage.Body!).RootElement;
+        var body = JsonDocument.Parse(entry.RequestMessage!.Body!).RootElement;
 
         // Wire shape: { "thumbnails": { width, format, ... } } — see sdk-node/src/documents.ts:95-99.
         body.TryGetProperty("thumbnails", out var inner).Should().BeTrue(

@@ -129,7 +129,7 @@ public sealed class RetryHandlerTests
     /// raw LogEntries count beyond what most retry assertions care about.
     /// </summary>
     private static List<WireMock.Logging.ILogEntry> PostLogEntries(WireMockServer server)
-        => server.LogEntries.Where(e => e.RequestMessage.Method == "POST").ToList();
+        => server.LogEntries.Where(e => e.RequestMessage!.Method == "POST").ToList();
 
     /// <summary>
     /// Stubs the two-step render flow with a fixed success response on every call:
@@ -359,7 +359,7 @@ public sealed class RetryHandlerTests
 
         // All three requests must carry the same Idempotency-Key.
         var keys = entries
-            .Select(e => e.RequestMessage.Headers!["Idempotency-Key"].First())
+            .Select(e => e.RequestMessage!.Headers!["Idempotency-Key"].First())
             .Distinct()
             .ToList();
         keys.Should().HaveCount(1, "Idempotency-Key must be identical across all attempts");
