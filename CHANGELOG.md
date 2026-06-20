@@ -74,7 +74,7 @@ First public release of the Poli Page .NET SDK. Targets `net8.0` and
 - `.editorconfig` enforced; `dotnet format --verify-no-changes` in CI.
 - Roslyn analyzers: `Microsoft.CodeAnalysis.NetAnalyzers`,
   `Meziantou.Analyzer`, `Roslynator.Analyzers`.
-- Deterministic build, embedded symbols, `.snupkg` symbol package, and
+- Deterministic build, embedded symbols (PDBs inside the assembly), and
   Source Link via `Microsoft.SourceLink.GitHub`.
 
 [Unreleased]: https://github.com/poli-page/sdk-csharp/compare/v0.9.0...HEAD

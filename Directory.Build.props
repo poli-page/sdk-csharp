@@ -48,9 +48,14 @@
   <PropertyGroup Label="NuGet hygiene" Condition="'$(IsPackable)' != 'false'">
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <!--
+      Why: DebugType=embedded bakes the PDB into the assembly, so no
+      standalone .pdb exists. Generating a .snupkg in that mode yields a
+      symbol package with zero .pdb files, which nuget.org's symbol server
+      rejects (HTTP 400). Embedded symbols + SourceLink already give
+      consumers step-into debugging, so no separate symbol package is needed.
+    -->
     <DebugType>embedded</DebugType>
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <EnablePackageValidation>true</EnablePackageValidation>
   </PropertyGroup>
 

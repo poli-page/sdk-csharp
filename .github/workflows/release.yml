@@ -109,8 +109,8 @@ jobs:
         with:
           user: ${{ secrets.NUGET_USER }}
 
-      # The .snupkg symbol package is pushed automatically alongside the
-      # .nupkg (IncludeSymbols + snupkg format in Directory.Build.props).
+      # Symbols are embedded in the assembly (DebugType=embedded in
+      # Directory.Build.props), so there is no separate .snupkg to push.
       # --skip-duplicate turns a 409 (version already pushed) into a warning
       # so a re-run after a partial failure does not hard-fail.
       - name: Push to nuget.org
