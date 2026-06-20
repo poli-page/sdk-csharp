@@ -13,7 +13,10 @@ on:
       - 'MIGRATION.md'
       - 'LICENSE'
       - '.github/workflows/docs.yml'
-  release: { types: [published] }
+  # No `release: published` trigger: it re-runs from a tag ref, which the
+  # github-pages environment protection rejects. Every release bumps
+  # <Version>/CHANGELOG on main first, so the push trigger above already
+  # redeploys the docs. Manual redeploys use workflow_dispatch.
   workflow_dispatch:
 
 permissions:
