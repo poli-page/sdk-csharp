@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-06-22
+
+### Fixed
+
+- Wrap transport failures (DNS / connection / TLS) on the presigned-download
+  path (`DownloadAsync` / `DownloadStreamAsync`) in a typed
+  `PoliPageDownloadException` (code `download_failed`) instead of leaking a raw
+  `HttpRequestException`. Caller cancellation is still propagated unchanged.
+
 ## [0.9.0] - 2026-06-20
 
 First public release of the Poli Page .NET SDK. Targets `net8.0` and
