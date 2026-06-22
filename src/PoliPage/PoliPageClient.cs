@@ -163,13 +163,41 @@ public sealed class PoliPageClient : IDisposable
     internal async Task<byte[]> DownloadAsync(string url, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        using var response = await _downloadHttp
-            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-            .ConfigureAwait(false);
+        using var response = await SendDownloadAsync(request, cancellationToken).ConfigureAwait(false);
 
         await ThrowIfDownloadFailedAsync(response).ConfigureAwait(false);
 
         return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Sends a request on the dedicated download transport, translating transport-level
+    /// failures (DNS, connection refused, TLS) into the SDK's typed
+    /// <see cref="PoliPageDownloadException"/> so callers never see a raw
+    /// <see cref="HttpRequestException"/>. Caller cancellation is re-thrown unchanged.
+    /// </summary>
+    private async Task<HttpResponseMessage> SendDownloadAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _downloadHttp
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw; // Caller cancel: surface as-is, never wrap.
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new PoliPageDownloadException(
+                PoliPageErrorCode.DownloadFailed,
+                statusCode: 0,
+                "Presigned download failed: network error.",
+                requestId: null,
+                ex);
+        }
     }
 
     /// <summary>
@@ -183,9 +211,7 @@ public sealed class PoliPageClient : IDisposable
         HttpResponseMessage? response = null;
         try
         {
-            response = await _downloadHttp
-                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-                .ConfigureAwait(false);
+            response = await SendDownloadAsync(request, cancellationToken).ConfigureAwait(false);
 
             await ThrowIfDownloadFailedAsync(response).ConfigureAwait(false);
 
