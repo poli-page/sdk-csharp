@@ -93,7 +93,7 @@ jobs:
             10.0.x
 
       - name: Download package artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: nupkg-${{ github.ref_name }}
           path: ./nupkg
