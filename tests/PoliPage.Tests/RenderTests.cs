@@ -893,4 +893,51 @@ public sealed class RenderTests
         ex.Which.StatusCode.Should().Be(403);
         ex.Which.Code.Should().Be(PoliPageErrorCode.DownloadFailed);
     }
+
+    [Fact]
+    public async Task DownloadPdfAsync_wraps_transport_error_in_PoliPageDownloadException()
+    {
+        // A DNS/connection/TLS failure on the presigned URL must surface as the SDK's
+        // typed exception (code + inner exception), never as a raw HttpRequestException.
+        using var server = WireMockServer.Start();
+        var presignedUrl = $"{server.Url}/storage/doc_abc.pdf";
+        var descriptorJson = SampleDescriptorJson.Replace(
+            "https://placeholder.invalid/doc_abc123.pdf", presignedUrl, StringComparison.Ordinal);
+
+        server.Given(Request.Create().WithPath("/v1/render").UsingPost())
+              .RespondWith(Response.Create()
+                  .WithStatusCode(200)
+                  .WithHeader("Content-Type", "application/json")
+                  .WithBody(descriptorJson));
+
+        var transportFailure = new HttpRequestException("Connection refused.");
+        using var downloadHttp = new HttpClient(new ThrowingHandler(transportFailure));
+
+        using var client = new PoliPageClient(new PoliPageClientOptions
+        {
+            ApiKey = "pp_test_unit",
+            BaseUrl = new Uri(server.Url!),
+            DownloadHttpClient = downloadHttp,
+        });
+
+        var descriptor = await client.Render.DocumentAsync(DefaultInput());
+
+        var act = async () => await descriptor.DownloadPdfAsync();
+
+        var ex = await act.Should().ThrowAsync<PoliPageDownloadException>();
+        ex.Which.Code.Should().Be(PoliPageErrorCode.DownloadFailed);
+        ex.Which.StatusCode.Should().Be(0);
+        ex.Which.InnerException.Should().BeSameAs(transportFailure);
+    }
+
+    /// <summary>
+    /// A <see cref="DelegatingHandler"/> that always throws the supplied exception,
+    /// simulating a transport-level failure (DNS, connection refused, TLS).
+    /// </summary>
+    private sealed class ThrowingHandler(Exception toThrow) : System.Net.Http.HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromException<HttpResponseMessage>(toThrow);
+    }
 }
