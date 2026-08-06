@@ -41,6 +41,12 @@ updates:
       time: "07:00"
       timezone: "Europe/Paris"
     open-pull-requests-limit: 3
+    groups:
+      # init and analyze are two halves of the same action: bumping them in
+      # separate PRs makes analyze reject the config init wrote.
+      codeql:
+        patterns:
+          - "github/codeql-action*"
     commit-message:
       prefix: "chore(ci)"
       include: "scope"
