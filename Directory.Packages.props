@@ -18,9 +18,9 @@
   </ItemGroup>
 
   <ItemGroup Label="Analyzers">
-    <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.302" />
-    <PackageVersion Include="Meziantou.Analyzer" Version="3.0.139" />
-    <PackageVersion Include="Roslynator.Analyzers" Version="4.15.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.400" />
+    <PackageVersion Include="Meziantou.Analyzer" Version="3.0.159" />
+    <PackageVersion Include="Roslynator.Analyzers" Version="4.16.1" />
   </ItemGroup>
 
   <ItemGroup Label="Test dependencies">
