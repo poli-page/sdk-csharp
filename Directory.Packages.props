@@ -18,8 +18,8 @@
   </ItemGroup>
 
   <ItemGroup Label="Analyzers">
-    <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.400" />
-    <PackageVersion Include="Meziantou.Analyzer" Version="3.0.177" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.401" />
+    <PackageVersion Include="Meziantou.Analyzer" Version="3.0.257" />
     <PackageVersion Include="Roslynator.Analyzers" Version="5.0.0" />
   </ItemGroup>
 
