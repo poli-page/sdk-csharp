@@ -1,0 +1,88 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit config for poli-page repos. PRs here are mostly opened and fixed by automated agents
+# (the poli-page auto loop and issue pipeline), which read CodeRabbit's findings and its commit status.
+language: en-US
+early_access: false
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  allow_author_approval: true
+  # The summary goes in the walkthrough, never in the PR description: the merge gate reads the description.
+  high_level_summary: false
+  high_level_summary_in_walkthrough: true
+  review_status: true
+  review_details: false
+  # The loop decides "reviewed this head" from the CodeRabbit commit status ("Review completed").
+  review_progress: true
+  commit_status: true
+  fail_commit_status: false
+  collapse_walkthrough: true
+  changed_files_summary: true
+  sequence_diagrams: true
+  estimate_code_review_effort: true
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+  suggested_labels: true
+  # PR labels are the closed issues' labels; CodeRabbit only suggests.
+  auto_apply_labels: false
+  suggested_reviewers: true
+  auto_assign_reviewers: false
+  in_progress_fortune: false
+  poem: false
+  enable_prompt_for_ai_agents: true
+  abort_on_close: true
+  disable_cache: false
+  slop_detection:
+    enabled: true
+    include_all_authors: false
+  auto_review:
+    enabled: true
+    drafts: false
+    # Every push of a fix round must be reviewed, and never auto-paused (the loop allows up to 5 rounds).
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 0
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+  path_filters:
+    - "!**/package-lock.json"
+    - "!**/bin/**"
+    - "!**/obj/**"
+    - "!**/TestResults/**"
+    - "!**/*.trx"
+    - "!docs/dist/**"
+    - "!docs/.astro/**"
+    - "!docs/node_modules/**"
+    - "!nupkg/**"
+  path_instructions:
+    - path: "src/PoliPage/**/*.cs"
+      instructions: >-
+        Public API of the .NET SDK. Its surface and behaviour must match the other poli-page SDKs and
+        the API spec; API errors map to PoliPageException with the code from the { error: { code } }
+        payload. Flag any breaking change to public types or members unless the version is a major bump
+        (Directory.Build.props, CHANGELOG.md and MIGRATION.md updated). Public members need XML docs,
+        and async methods must accept a CancellationToken.
+    - path: "src/PoliPage/Internal/**"
+      instructions: >-
+        Internal transport code (HttpClient, retry/backoff, idempotency). Check retry only on safe
+        conditions, honour cancellation, never log or leak the API key, and dispose of HTTP resources.
+    - path: "tests/**/*.cs"
+      instructions: >-
+        The repo is TDD: every public method needs a test in tests/PoliPage.Tests. Tests must not hit
+        the network unless tagged Category=Integration, and must not contain real API keys.
+    - path: "{examples,samples}/**"
+      instructions: >-
+        Sample code that customers copy: it must compile against the current public API, read the API
+        key from the POLI_PAGE_API_KEY environment variable (never hard-code secrets), and match the
+        README.
+    - path: "docs/src/content/**"
+      instructions: >-
+        Public docs site content. Code snippets and method signatures must match the current SDK API
+        and canonical-methods.json / canonical-errors.json.
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "CONTRIBUTING.md"
+      - "sdk-engineering-guide.md"
