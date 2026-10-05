@@ -59,7 +59,7 @@ reviews:
     - path: "src/PoliPage/**/*.cs"
       instructions: >-
         Public API of the .NET SDK. Its surface and behaviour must match the other poli-page SDKs and
-        the API spec; API errors map to PoliPageException with the code from the { error: { code } }
+        the API spec; API errors map to PoliPageException with the code from the { error: CODE_STRING, detail?, issues? } (flat, API spec §4.1)
         payload. Flag any breaking change to public types or members unless the version is a major bump
         (Directory.Build.props, CHANGELOG.md and MIGRATION.md updated). Public members need XML docs,
         and async methods must accept a CancellationToken.
