@@ -24,13 +24,15 @@ Or add the reference directly to your `.csproj`:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="PoliPage" Version="0.9.0" />
+  <PackageReference Include="PoliPage" Version="0.10.0" />
 </ItemGroup>
 ```
 
 Targets `net8.0` (LTS) and `net10.0` (LTS). Zero runtime dependencies beyond `Microsoft.Extensions.Logging.Abstractions` and the BCL.
 
 ## Quick start
+
+Set `POLI_PAGE_API_KEY` to a `sandbox` key of a fresh organization (`pp_sandbox_…`, see [Authentication & environments](#authentication--environments)), then:
 
 ```csharp
 using PoliPage;
@@ -40,31 +42,43 @@ var client = new PoliPageClient(new PoliPageClientOptions
     ApiKey = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
 });
 
-byte[] pdf = await client.Render.PdfAsync(new ProjectModeInput
+byte[] pdf = await client.Render.PdfAsync(new RenderInput
 {
     Project  = "getting-started",
     Template = "welcome",
-    Version  = "1.0.0",
-    Data     = new { name = "World" },
+    Data     = new { name = "SDK Demo" },
 });
 
 await File.WriteAllBytesAsync("welcome.pdf", pdf);
 // pdf is a byte[] of the rendered PDF document
 ```
 
-Every Poli Page org comes pre-provisioned with a `getting-started/welcome` template, so the snippet above runs as-is the moment you have an API key. Swap the slugs once you have pushed your own templates with the `poli` CLI.
+Every organization gets a `getting-started` project, published into its `sandbox` environment when the organization is created, with a `welcome` template. A sandbox key renders it with no setup, so the snippet above runs as-is on a fresh organization. It is a normal, editable project: in an organization that renamed it, deleted it or removed it from `sandbox`, the API answers `404 PROJECT_NOT_FOUND` or `404 PROJECT_NOT_IN_ENVIRONMENT`, so use a fresh organization to follow along.
+
+There is no version to pick: a render uses the project's copy published in the API key's environment. For your own templates, publish the project to the environment of the key you render with, then swap the slugs.
+
+To preview a template or render inline HTML while you design it, use the playground: <https://play.poli.page>. The API and this SDK render published templates only.
+
+### Try it locally — runnable demo
+
+```bash
+dotnet run --project samples/Demo
+```
+
+The demo renders `getting-started`/`welcome`, walks every public method end-to-end and writes the results to `samples/Demo/output/`. First run prompts for a `sandbox` key (`pp_sandbox_…`), checks its format and saves it to `.env` at the repo root; subsequent runs are silent. The `POLI_PAGE_API_KEY` env var wins over the file when set; `POLI_PAGE_BASE_URL` (optional) overrides the API host.
+
+It walks nine steps: `Render.PdfAsync` → `Render.PdfStreamAsync` → `RenderToFileAsync` → `Render.DocumentAsync` → `Documents.GetAsync` → `Documents.ThumbnailsAsync` → `Documents.PreviewAsync` → `Documents.DeleteAsync` → `not-found` (a render of a template that does not exist, caught as `PoliPageNotFoundException` with code `TEMPLATE_NOT_FOUND`; the demo prints its code, status, message and request id).
 
 ### URL output — render and store, then download later
 
 ```csharp
-DocumentDescriptor doc = await client.Render.DocumentAsync(new ProjectModeInput
+DocumentDescriptor doc = await client.Render.DocumentAsync(new RenderInput
 {
     Project  = "billing",
     Template = "invoice",
-    Version  = "1.0.0",
     Data     = new { invoiceNumber = "INV-001" },
 });
-// doc.DocumentId, doc.PageCount, doc.SizeBytes, doc.PresignedPdfUrl
+// doc.DocumentId, doc.Environment, doc.PageCount, doc.SizeBytes, doc.PresignedPdfUrl
 ```
 
 ### Dependency injection — register with `IServiceCollection`
@@ -79,7 +93,7 @@ builder.Services.AddPoliPage(options =>
 public class InvoiceService(PoliPageClient poliPage)
 {
     public Task<byte[]> RenderAsync(Invoice invoice, CancellationToken ct) =>
-        poliPage.Render.PdfAsync(new ProjectModeInput { /* … */ }, cancellationToken: ct);
+        poliPage.Render.PdfAsync(new RenderInput { /* … */ }, cancellationToken: ct);
 }
 ```
 
@@ -89,13 +103,12 @@ Every render produces a stored document, accessible via `DocumentId` for later d
 
 ```csharp
 // 1. Render and store
-var doc = await client.Render.DocumentAsync(new ProjectModeInput
+var doc = await client.Render.DocumentAsync(new RenderInput
 {
     Project  = "billing",
     Template = "invoice",
-    Version  = "1.0.0",
     Data     = new { invoiceNumber = "INV-001" },
-    Metadata = new Dictionary<string, object> { ["customerId"] = "cust_123" },
+    Metadata = new RenderMetadata { ["customerId"] = "cust_123" },
 });
 
 // 2. Persist the document ID
@@ -110,7 +123,7 @@ IReadOnlyList<Thumbnail> thumbs = await client.Documents.ThumbnailsAsync(
     doc.DocumentId,
     new ThumbnailOptions { Width = 320, Format = ThumbnailFormat.Png });
 
-// 5. Soft-delete when done
+// 5. Soft-delete when done (idempotent: deleting again also succeeds)
 await client.Documents.DeleteAsync(doc.DocumentId);
 ```
 
@@ -118,15 +131,23 @@ The presigned URL has a ~15-minute TTL. If `DownloadPdfAsync` throws `PoliPageDo
 
 ## Authentication & environments
 
-The API key is read from the `POLI_PAGE_API_KEY` environment variable by default, or passed via `PoliPageClientOptions.ApiKey`. The mode is determined by the key prefix:
+An API key belongs to exactly one environment of your organization, and its text names that environment: a key is `pp_{env}_{32 lowercase hex}`, matching
 
-| Prefix       | Mode                                                               |
-| ------------ | ------------------------------------------------------------------ |
-| `pp_test_…`  | Sandbox — not billed, generous rate limits                          |
-| `pp_live_…`  | Live — billed, production rate limits                              |
-| `pp_sa_…`    | Service-account key; environment matches the SA's configuration    |
+```text
+^pp_(?=[a-z][a-z0-9-]{0,19}_)[a-z][a-z0-9]*(?:-[a-z0-9]+)*_[0-9a-f]{32}$
+```
 
-All prefixes hit the same endpoint (`https://api.poli.page`). The SDK passes the key as a Bearer token and never inspects the prefix.
+The API resolves the environment from the key and renders the project's copy published there; the SDK never sends an environment.
+
+| Environment                           | Key            | Watermark | Counted |
+| ------------------------------------- | -------------- | --------- | ------- |
+| `sandbox` (every org)                 | `pp_sandbox_…` | yes       | no      |
+| `live` (every org, deletable on Pro+) | `pp_live_…`    | no        | yes     |
+| created on Pro+ (e.g. `staging`)      | `pp_staging_…` | no        | yes     |
+
+"Counted" means the render counts toward the organization's monthly PDF quota. `sandbox` renders are watermarked, are not counted, and their documents expire 30 days after creation. There is no watermark option: a template that wants a watermark outside `sandbox` uses the `poli-watermark` class.
+
+Standard and service keys share this one format. Pass the key through `PoliPageClientOptions.ApiKey` (the samples read it from `POLI_PAGE_API_KEY`; the SDK itself never reads the environment). Every key hits the same endpoint, `https://api.poli.page` by default or whatever you pass as `BaseUrl` (see [Configuration](#configuration)). The SDK passes the key through as a `Bearer` token and does not check its format.
 
 ## Methods
 
@@ -134,16 +155,15 @@ All prefixes hit the same endpoint (`https://api.poli.page`). The SDK passes the
 | ------------------------------------------------------------ | ---------------------------------- | ----------- |
 | `client.Render.PdfAsync(input, opts?, ct)`                   | `Task<byte[]>`                     | Render a PDF, return bytes |
 | `client.Render.PdfStreamAsync(input, opts?, ct)`             | `Task<Stream>`                     | Render and stream the response |
-| `client.Render.PreviewAsync(input, opts?, ct)`               | `Task<PreviewResult>`              | Paginated HTML preview |
 | `client.Render.DocumentAsync(input, opts?, ct)`              | `Task<DocumentDescriptor>`         | Render and return descriptor (skip auto-download) |
 | `client.Documents.GetAsync(id, ct)`                          | `Task<DocumentDescriptor>`         | Retrieve a stored document |
 | `client.Documents.PreviewAsync(id, ct)`                      | `Task<DocumentPreviewResult>`      | Stored document's paginated HTML |
-| `client.Documents.ThumbnailsAsync(id, options, ct)`          | `Task<IReadOnlyList<Thumbnail>>`   | Page thumbnails (PNG/JPEG, base64) |
-| `client.Documents.DeleteAsync(id, ct)`                       | `Task`                             | Soft-delete a stored document |
+| `client.Documents.ThumbnailsAsync(id, options?, ct)`         | `Task<IReadOnlyList<Thumbnail>>`   | Page thumbnails (PNG/JPEG/WebP, base64) |
+| `client.Documents.DeleteAsync(id, ct)`                       | `Task`                             | Soft-delete a stored document (idempotent) |
 | `descriptor.DownloadPdfAsync(ct)`                            | `Task<byte[]>`                     | Fetch bytes from the descriptor's presigned URL |
 | `PoliPageClient.RenderToFileAsync(input, path, opts?, ct)`   | `Task`                             | Render and stream to disk |
 
-`Render.PdfAsync`, `PdfStreamAsync`, and `DocumentAsync` accept `ProjectModeInput` directly — passing `InlineModeInput` is a compile-time error. `Render.PreviewAsync` accepts the sealed `RenderInput` base type, satisfied by both modes.
+Every render method takes a `RenderInput`: `Project`, `Template` and `Data` (required), plus optional `Metadata`, `Format`, `Orientation` and `Locale`. There is no version and no inline-HTML input; previews of a template and inline HTML live in the playground, <https://play.poli.page>. `Documents.PreviewAsync(id)` returns the stored HTML of a document you already rendered.
 
 ## Configuration
 
@@ -174,7 +194,7 @@ var pdf = await client.Render.PdfAsync(input, new RequestOptions
 
 | Option            | Type                       | Default                  | Description |
 | ----------------- | -------------------------- | ------------------------ | ----------- |
-| `ApiKey`           | `string`                   | (required)               | `pp_test_*`, `pp_live_*`, or `pp_sa_*` API key |
+| `ApiKey`           | `string`                   | (required)               | API key, `pp_{env}_…` (e.g. `pp_sandbox_…`); it selects the environment |
 | `BaseUrl`          | `Uri`                      | `https://api.poli.page`  | API base URL |
 | `MaxRetries`       | `int`                      | `2`                      | Retry budget on top of the initial attempt |
 | `RetryDelay`       | `TimeSpan`                 | `500ms`                  | Base exponential-backoff delay |
@@ -208,13 +228,12 @@ catch (PoliPageException ex)
 Exception hierarchy:
 
 - `PoliPageException` — base type, thrown on any API failure.
-- `PoliPageAuthException` — 401 / 403. Covers `Unauthorized`, `Forbidden`.
-- `PoliPageNotFoundException` — 404. Covers `NotFound`, `VersionNotFound`, `DocumentNotFound`.
-- `PoliPageGoneException` — 410. Document was soft-deleted.
+- `PoliPageAuthException` — 401 / 403. Covers `MissingApiKey`, `InvalidApiKey`, `Forbidden`, `OrganizationPaymentGrace`, `EnvironmentProtected`, `ThumbnailsNotAvailable`.
+- `PoliPageNotFoundException` — 404. Covers `ProjectNotFound`, `ProjectNotInEnvironment`, `TemplateNotFound`, `DocumentNotFound`, `NotFound`.
+- `PoliPageGoneException` — 410 `DocumentGone`. The document has been deleted.
 - `PoliPageValidationException` — 400 / 422. Bad input payload.
-- `PoliPageRateLimitException` — 429. Exposes `RetryAfter`.
-- `PoliPagePaymentRequiredException` — 402. Subscription has unpaid invoices.
-- `PoliPageNetworkException` — DNS / TCP / TLS / timeout. Retryable.
+- `PoliPageRateLimitException` — 429 (`RateLimitExceeded`, `QuotaExceeded`, `OverageCapExceeded`). Exposes `RetryAfter`.
+- `PoliPageNetworkException` — DNS / TCP / TLS failure (`NetworkError`). Retryable. A per-request timeout is a base `PoliPageException` with `Code == PoliPageErrorCode.Timeout`.
 - `PoliPageDownloadException` — presigned S3 URL fetch failed (commonly URL expiry).
 
 Every subclass exposes the same `Code`, `StatusCode`, `Message`, and `RequestId` properties as the base type. Use `ex.Code` against the `PoliPageErrorCode` constants for fine-grained branching when the subclass is too coarse.
@@ -286,9 +305,8 @@ Disable retries by setting `MaxRetries = 0` in `PoliPageClientOptions`.
 
 The SDK targets `net8.0` and `net10.0` with **nullable reference types** enabled. Every public symbol carries XML doc comments — they surface in IntelliSense and feed the auto-generated API reference.
 
-- Input types (`ProjectModeInput`, `InlineModeInput`) are sealed records satisfying the abstract `RenderInput` base type. External types cannot extend it.
-- Methods that require project mode (`PdfAsync`, `PdfStreamAsync`, `DocumentAsync`) accept `ProjectModeInput` directly — passing `InlineModeInput` is a compile-time error.
-- Nullable wire fields use the BCL `?` annotation (`string? ProjectId`, `string? Version`) so missing-vs-null is unambiguous in `System.Text.Json` round-trips.
+- `RenderInput` is a sealed record with `required` members (`Project`, `Template`, `Data`), so a missing field is a compile-time error. Unset optional fields are omitted from the request body.
+- Nullable wire fields use the BCL `?` annotation (`string? ProjectId`, `string? Locale`) so missing-vs-null is unambiguous in `System.Text.Json` round-trips.
 
 Consumers should enable `<Nullable>enable</Nullable>` and `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` in their `.csproj` to surface the SDK's nullability contract.
 
@@ -300,11 +318,10 @@ Parallel requests fan out cleanly via `Task.WhenAll`:
 
 ```csharp
 var tasks = invoices.Select(inv =>
-    client.Render.DocumentAsync(new ProjectModeInput
+    client.Render.DocumentAsync(new RenderInput
     {
         Project  = "billing",
         Template = "invoice",
-        Version  = "1.0.0",
         Data     = inv.ToData(),
     }));
 
@@ -318,7 +335,7 @@ Server-side only. The SDK runs on:
 - **.NET 8 LTS** — supported through November 2026.
 - **.NET 10 LTS** — supported through November 2028.
 
-**Browsers (Blazor WebAssembly) are not supported.** API keys (`pp_test_*`, `pp_live_*`) are secrets and must never be shipped to a browser. Call the SDK from your backend (ASP.NET Core, Worker Service, Azure Function, AWS Lambda) and proxy the result to the client. Blazor Server is fine because the SDK runs on the server.
+**Browsers (Blazor WebAssembly) are not supported.** API keys of every environment (`pp_{env}_…`) are secrets and must never be shipped to a browser. Call the SDK from your backend (ASP.NET Core, Worker Service, Azure Function, AWS Lambda) and proxy the result to the client. Blazor Server is fine because the SDK runs on the server.
 
 CI exercises `net8.0` and `net10.0` on Linux, plus `net10.0` on Windows and macOS.
 

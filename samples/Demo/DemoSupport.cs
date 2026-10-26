@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace PoliPage.Demo;
 
@@ -111,10 +112,16 @@ internal static class EnvFile
         return new Uri(DefaultBaseUrl);
     }
 
+    // The contract's full-key regex, verbatim: `pp_{env}_{32 lowercase hex}` for
+    // any environment name. It checks the shape only, never which environment.
+    private static readonly Regex FullKeyPattern = new(
+        "^pp_(?=[a-z][a-z0-9-]{0,19}_)[a-z][a-z0-9]*(?:-[a-z0-9]+)*_[0-9a-f]{32}$",
+        RegexOptions.CultureInvariant);
+
     // Resolution order:
     //   1. POLI_PAGE_API_KEY in the host shell (wins for CI).
     //   2. POLI_PAGE_API_KEY in `<repoRoot>/.env`.
-    //   3. Interactive prompt — paste, validate `pp_test_*`, append to `.env`.
+    //   3. Interactive prompt — paste a sandbox key, check its format, append to `.env`.
     public static string EnsureApiKey(string repoRoot)
     {
         var fromEnv = Environment.GetEnvironmentVariable(ApiKeyVar);
@@ -135,9 +142,12 @@ internal static class EnvFile
         Console.WriteLine(Ansi.Bold(Ansi.Yellow($"   No {ApiKeyVar} found.")));
         Console.WriteLine(rule);
         Console.WriteLine();
-        Console.WriteLine("   This demo needs a test key (" + Ansi.Cyan("pp_test_*") + ") to");
-        Console.WriteLine("   talk to the Poli Page API. Test keys never bill or send real");
-        Console.WriteLine("   documents.");
+        Console.WriteLine("   This demo needs a sandbox key (" + Ansi.Cyan("pp_sandbox_…") + ") to talk");
+        Console.WriteLine("   to the Poli Page API. Sandbox renders are watermarked and do not");
+        Console.WriteLine("   count toward your monthly PDF quota.");
+        Console.WriteLine();
+        Console.WriteLine("   Use a fresh organization: the demo renders the " + Ansi.Cyan("getting-started"));
+        Console.WriteLine("   project every organization gets in its " + Ansi.Cyan("sandbox") + " environment.");
         Console.WriteLine();
         Console.WriteLine(Ansi.Bold("   How to get one:"));
         Console.WriteLine("     1. Sign in at " + Ansi.Cyan("https://app.poli.page"));
@@ -145,20 +155,21 @@ internal static class EnvFile
         Console.WriteLine("          " + Ansi.Cyan("https://app.poli.page/orgs/{YOUR_ORG}/keys"));
         Console.WriteLine(Ansi.Dim("        (replace {YOUR_ORG} with your org slug — visible in the"));
         Console.WriteLine(Ansi.Dim("         dashboard URL when you're inside your organization)"));
-        Console.WriteLine("     3. Click \"Create key\" and copy");
-        Console.WriteLine("        the value (starts with " + Ansi.Cyan("pp_test_") + ").");
+        Console.WriteLine("     3. Create a key in the " + Ansi.Cyan("sandbox") + " environment and copy");
+        Console.WriteLine("        the value (starts with " + Ansi.Cyan("pp_sandbox_") + ").");
         Console.WriteLine();
         Console.WriteLine("   Paste it below — we'll save it to " + Ansi.Cyan(".env") + " (repo root) so");
         Console.WriteLine("   future runs pick it up automatically. (You can also set");
         Console.WriteLine("   " + Ansi.Dim(ApiKeyVar) + " in your shell — that wins over the file.)");
         Console.WriteLine();
-        Console.Write(Ansi.Bold("   Paste your pp_test_* key") + " (or Ctrl-C to cancel): ");
+        Console.Write(Ansi.Bold("   Paste your pp_sandbox_… key") + " (or Ctrl-C to cancel): ");
 
         var key = (Console.ReadLine() ?? string.Empty).Trim();
-        if (!key.StartsWith("pp_test_", StringComparison.Ordinal))
+        if (!FullKeyPattern.IsMatch(key))
         {
             Console.Error.WriteLine();
-            Console.Error.WriteLine("  " + Ansi.Red("✗") + " Expected a key starting with `pp_test_`. Aborting.");
+            Console.Error.WriteLine("  " + Ansi.Red("✗") + " That does not look like an API key (expected pp_{env}_ followed by");
+            Console.Error.WriteLine("    32 lowercase hex characters, e.g. pp_sandbox_…). Aborting.");
             Console.Error.WriteLine();
             Environment.Exit(1);
         }

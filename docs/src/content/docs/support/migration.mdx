@@ -1,26 +1,38 @@
 ---
 title: Migration
-description: Upgrade guides for moving between major versions of the .NET SDK.
+description: Upgrade guides for moving between breaking releases of the .NET SDK.
 ---
 
-This page tracks breaking changes between major versions of the `PoliPage` NuGet package. For the full per-release diff, see the [changelog](../changelog/).
+This page tracks breaking changes between releases of the `PoliPage` NuGet package. While the package is on 0.x, a breaking change bumps the minor version. For the full per-release diff, see the [changelog](../changelog/).
 
-## v1.0
+## From 0.9.x to 0.10.0
 
-The first stable release. The full v1.0 surface and the renames from the pre-1.0 line are documented in [`MIGRATION.md` in the repo](https://github.com/poli-page/sdk-csharp/blob/main/MIGRATION.md).
+0.10.0 follows the environments contract: an API key belongs to one environment (`pp_sandbox_…`, `pp_live_…`, `pp_staging_…`) and a render uses the project's copy published in that environment. Every removal ships at once, with no deprecation window. The full guide, with before/after code, is in [`MIGRATION.md` in the repo](https://github.com/poli-page/sdk-csharp/blob/main/MIGRATION.md#from-09x-to-0100).
 
-Short version: every render call now goes through a namespace (`Render.PdfAsync`, `Render.PreviewAsync`, `Render.DocumentAsync`), all PDF-producing methods require `ProjectModeInput`, and inline mode is supported only on `Render.PreviewAsync`.
+- Keys: the old test and service-account key prefixes are gone; every key is `pp_{env}_…`. Create a key in the environment you render in; a `sandbox` key replaces a test key.
+- `ProjectModeInput` is renamed `RenderInput`, the only render input. Its `Version` property is removed, and so is `DocumentDescriptor.Version`. Publish the project to the key's environment instead of pinning a version.
+- `Render.PreviewAsync`, `PreviewResult` and `InlineModeInput` are removed. Preview templates and inline HTML in the playground at [play.poli.page](https://play.poli.page). `Documents.PreviewAsync(id)` stays.
+- `PoliPagePaymentRequiredException` is removed: payment grace is `403 ORGANIZATION_PAYMENT_GRACE`, a `PoliPageAuthException`.
+- Error codes: the code comes from the API's error body, never from the HTTP status. `GONE` becomes `DOCUMENT_GONE`, the version codes are gone, and new codes such as `TEMPLATE_NOT_FOUND` and `PROJECT_NOT_IN_ENVIRONMENT` arrive. See [Errors](../../production/errors/).
+- `ThumbnailOptions.Width` and `Format` are nullable with no SDK default: unset, the API defaults apply.
+
+## 0.9.0
+
+The first release. Its surface is documented in [`MIGRATION.md` in the repo](https://github.com/poli-page/sdk-csharp/blob/main/MIGRATION.md#090).
 
 ## Example
 
-```csharp
-// pre-1.0
-var pdf = await client.RenderAsync(input);
+Rename the input type and drop the version line:
 
-// 1.0+
-byte[] pdf = await client.Render.PdfAsync(input);
+```csharp
+byte[] pdf = await client.Render.PdfAsync(new RenderInput
+{
+    Project  = "billing",
+    Template = "invoice",
+    Data     = new { invoiceNumber = "INV-001" },
+});
 ```
 
 ## See also
 - [Changelog](../changelog/)
-- [Render modes](../../concepts/render-modes/)
+- [Render input](../../concepts/render-modes/)

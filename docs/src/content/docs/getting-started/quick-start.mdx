@@ -5,17 +5,19 @@ description: Render your first PDF with the Poli Page .NET SDK in under 30 secon
 
 import ApiKeyCallout from '@preset/components/ApiKeyCallout.astro';
 
-This page walks through your first render — from key to PDF — without touching the dashboard.
+This page walks through your first render — from key to PDF — without touching the dashboard. It uses the `getting-started` project that every organization gets in its `sandbox` environment.
 
 <ApiKeyCallout />
 
 ## Set your API key
 
-Export your key into the environment your application runs in:
+Create a key in your organization's `sandbox` environment (it starts with `pp_sandbox_`) and export it into the environment your application runs in:
 
 ```bash
-export POLI_PAGE_API_KEY=pp_test_...
+export POLI_PAGE_API_KEY=pp_sandbox_x   # replace with your full key
 ```
+
+See [Authentication](../../concepts/authentication/) for the key format and what each environment does.
 
 ## Render a PDF
 
@@ -27,20 +29,21 @@ var client = new PoliPageClient(new PoliPageClientOptions
     ApiKey = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
 });
 
-byte[] pdf = await client.Render.PdfAsync(new ProjectModeInput
+byte[] pdf = await client.Render.PdfAsync(new RenderInput
 {
-    Project  = "billing",
-    Template = "invoice",
-    Version  = "1.0.0",
-    Data     = new Dictionary<string, object>
-    {
-        { "invoiceNumber", "INV-001" },
-        { "total", 1280 },
-    },
+    Project  = "getting-started",
+    Template = "welcome",
+    Data     = new { name = "SDK Demo" },
 });
 ```
 
-`pdf` is a `byte[]`. Write it to disk, upload to S3, or return it directly from an HTTP handler.
+`pdf` is a `byte[]`. Write it to disk, upload it to S3, or return it directly from an HTTP handler.
+
+Every organization gets a `getting-started` project, published into its `sandbox` environment when the organization is created, with a `welcome` template, so this runs as-is on a fresh organization. It is a normal, editable project: in an organization that renamed it, deleted it or removed it from `sandbox`, the API answers `404 PROJECT_NOT_FOUND` or `404 PROJECT_NOT_IN_ENVIRONMENT`, so use a fresh organization to follow along.
+
+## Your own templates
+
+There is no version to pick: a render uses the project's copy published in the API key's environment. Publish your project to the environment of the key you render with, then swap the slugs. To preview a template or render inline HTML while you design it, use the playground at [play.poli.page](https://play.poli.page).
 
 ## Example
 
@@ -52,22 +55,17 @@ var client = new PoliPageClient(new PoliPageClientOptions
     ApiKey = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
 });
 
-byte[] pdf = await client.Render.PdfAsync(new ProjectModeInput
+byte[] pdf = await client.Render.PdfAsync(new RenderInput
 {
-    Project  = "billing",
-    Template = "invoice",
-    Version  = "1.0.0",
-    Data     = new Dictionary<string, object>
-    {
-        { "invoiceNumber", "INV-001" },
-        { "total", 1280 },
-    },
+    Project  = "getting-started",
+    Template = "welcome",
+    Data     = new { name = "SDK Demo" },
 });
 
-await File.WriteAllBytesAsync("./invoices/INV-001.pdf", pdf);
+await File.WriteAllBytesAsync("welcome.pdf", pdf);
 ```
 
 ## See also
 - [Authentication](../../concepts/authentication/)
-- [Render modes](../../concepts/render-modes/)
+- [Render input](../../concepts/render-modes/)
 - [Output handling](../../concepts/output-handling/)

@@ -13,11 +13,10 @@ using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 try
 {
     byte[] pdf = await client.Render.PdfAsync(
-        new ProjectModeInput
+        new RenderInput
         {
             Project  = "billing",
             Template = "invoice",
-            Version  = "1.0.0",
             Data     = new Dictionary<string, object> { { "invoiceNumber", "INV-001" } },
         },
         cancellationToken: cts.Token);
@@ -49,11 +48,10 @@ using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 try
 {
     byte[] pdf = await client.Render.PdfAsync(
-        new ProjectModeInput
+        new RenderInput
         {
             Project  = "billing",
             Template = "invoice",
-            Version  = "1.0.0",
             Data     = new Dictionary<string, object>
             {
                 { "invoiceNumber", "INV-001" },

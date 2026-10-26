@@ -1,0 +1,61 @@
+name: Integration
+
+# Runs tests/PoliPage.IntegrationTests against the real API, nightly and on
+# demand. The key comes from the POLI_PAGE_API_KEY secret: a `pp_sandbox_` key
+# of an organization whose `getting-started` project is untouched (the tests
+# render `getting-started`/`welcome`, then get, preview and delete the stored
+# document). Without that secret the job logs a skip and succeeds.
+#
+# The optional POLI_PAGE_BASE_URL secret overrides the API host; unset, the
+# SDK default applies. A secret is masked in the public logs, so no hostname
+# is named here.
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration
+  cancel-in-progress: false
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # GitHub passes an unset secret as an empty string; the tests treat an
+      # empty POLI_PAGE_API_KEY or POLI_PAGE_BASE_URL as unset.
+      POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_API_KEY }}
+      POLI_PAGE_BASE_URL: ${{ secrets.POLI_PAGE_BASE_URL }}
+    steps:
+      - name: Check secret presence
+        id: secret
+        shell: bash
+        run: |
+          if [ -z "$POLI_PAGE_API_KEY" ]; then
+            echo "::notice::POLI_PAGE_API_KEY secret is not set: skipping the integration tests."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.secret.outputs.present == 'true'
+
+      - name: Set up .NET 10.0
+        if: steps.secret.outputs.present == 'true'
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Integration tests
+        if: steps.secret.outputs.present == 'true'
+        shell: bash
+        run: |
+          dotnet test tests/PoliPage.IntegrationTests/PoliPage.IntegrationTests.csproj \
+            --configuration Release --framework net10.0 \
+            --filter "Category=Integration" \
+            --logger "console;verbosity=normal"
