@@ -14,28 +14,28 @@ environment. There is no deprecation window and no compatibility shim.
 
 ### Removed
 
-- `Render.PreviewAsync` and `PreviewResult`: the API removed
+- **BREAKING**: `Render.PreviewAsync` and `PreviewResult`: the API removed
   `POST /v1/render/preview`. `Documents.PreviewAsync(id)` (the stored HTML of
   a rendered document) is unchanged.
-- `InlineModeInput` (inline-HTML rendering) and the abstract `RenderInput`
+- **BREAKING**: `InlineModeInput` (inline-HTML rendering) and the abstract `RenderInput`
   base record.
-- `ProjectModeInput.Version` and `DocumentDescriptor.Version`: there are no
+- **BREAKING**: `ProjectModeInput.Version` and `DocumentDescriptor.Version`: there are no
   versions to pick.
-- `PoliPagePaymentRequiredException`: no route the SDK calls answers `402`;
+- **BREAKING**: `PoliPagePaymentRequiredException`: no route the SDK calls answers `402`;
   payment grace is `403 ORGANIZATION_PAYMENT_GRACE`.
-- `PoliPageErrorCode` constants `VersionNotFound`, `InvalidVersionFormat`,
+- **BREAKING**: `PoliPageErrorCode` constants `VersionNotFound`, `InvalidVersionFormat`,
   `VersionRequired`, `InvalidVersionForKeyEnv`, `MissingProjectOrTemplate`,
   `Gone` (the API answers `410 DOCUMENT_GONE`), `PaymentRequired` and
   `StorageRequired`.
 
 ### Changed
 
-- `ProjectModeInput` is renamed `RenderInput` and is the only render input.
+- **BREAKING**: `ProjectModeInput` is renamed `RenderInput` and is the only render input.
   It is a sealed record with seven body fields: `Project`, `Template`,
   `Data` (required) and `Metadata`, `Format`, `Orientation`, `Locale`
   (optional). `Data` is now `required`. Unset optional fields are omitted
   from the body, never sent as `null`.
-- API errors: the code is read from the body's `code` field, else its `error`
+- **BREAKING**: API errors: the code is read from the body's `code` field, else its `error`
   field, else `unknown_error`; it is never guessed from the HTTP status. A
   body that is not JSON gives `INTERNAL_ERROR` with the real status. The
   message is `detail`, else `title`, else `message`, else `HTTP <status>`
@@ -43,7 +43,7 @@ environment. There is no deprecation window and no compatibility shim.
   verbatim.
 - `DocumentDescriptor.Environment` is documented as any environment name
   (e.g. `sandbox`, `live`, `staging`) and is returned unchanged.
-- `ThumbnailOptions.Width` and `ThumbnailOptions.Format` are nullable with no
+- **BREAKING**: `ThumbnailOptions.Width` and `ThumbnailOptions.Format` are nullable with no
   SDK default (they used to send `200` and `png`). An unset option is not
   sent. `Documents.ThumbnailsAsync(id)` takes the options as an optional
   parameter; with none set the body is `{}` and the API defaults apply
@@ -51,7 +51,7 @@ environment. There is no deprecation window and no compatibility shim.
   `400 VALIDATION_ERROR`.
 - `Documents.DeleteAsync` is documented as idempotent: the API answers `204`
   for an already-deleted document too.
-- The default code of `PoliPageGoneException` is `DOCUMENT_GONE`.
+- **BREAKING**: The default code of `PoliPageGoneException` is `DOCUMENT_GONE`.
 
 ### Added
 
