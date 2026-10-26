@@ -1,4 +1,5 @@
-// Demonstrates: client.Render.PdfAsync(input) — project mode only.
+// Demonstrates: client.Render.PdfAsync(input) — renders the project's copy
+// published in the API key's environment.
 using PoliPage;
 
 var client = new PoliPageClient(new PoliPageClientOptions
@@ -6,11 +7,10 @@ var client = new PoliPageClient(new PoliPageClientOptions
     ApiKey = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
 });
 
-byte[] pdf = await client.Render.PdfAsync(new ProjectModeInput
+byte[] pdf = await client.Render.PdfAsync(new RenderInput
 {
     Project  = "billing",
     Template = "invoice",
-    Version  = "1.0.0",
     Data     = new Dictionary<string, object>
     {
         { "invoiceNumber", "INV-001" },

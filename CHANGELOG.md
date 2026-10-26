@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Breaking: implements the environments contract. A key carries its
+environment (`pp_{env}_…`, e.g. `pp_sandbox_…`, `pp_live_…`,
+`pp_staging_…`) and a render uses the project's copy published in that
+environment. There is no deprecation window and no compatibility shim.
+
+### Removed
+
+- **BREAKING**: `Render.PreviewAsync` and `PreviewResult`: the API removed
+  `POST /v1/render/preview`. `Documents.PreviewAsync(id)` (the stored HTML of
+  a rendered document) is unchanged.
+- **BREAKING**: `InlineModeInput` (inline-HTML rendering) and the abstract `RenderInput`
+  base record.
+- **BREAKING**: `ProjectModeInput.Version` and `DocumentDescriptor.Version`: there are no
+  versions to pick.
+- **BREAKING**: `PoliPagePaymentRequiredException`: no route the SDK calls answers `402`;
+  payment grace is `403 ORGANIZATION_PAYMENT_GRACE`.
+- **BREAKING**: `PoliPageErrorCode` constants `VersionNotFound`, `InvalidVersionFormat`,
+  `VersionRequired`, `InvalidVersionForKeyEnv`, `MissingProjectOrTemplate`,
+  `Gone` (the API answers `410 DOCUMENT_GONE`), `PaymentRequired` and
+  `StorageRequired`.
+
+### Changed
+
+- **BREAKING**: `ProjectModeInput` is renamed `RenderInput` and is the only render input.
+  It is a sealed record with seven body fields: `Project`, `Template`,
+  `Data` (required) and `Metadata`, `Format`, `Orientation`, `Locale`
+  (optional). `Data` is now `required`. Unset optional fields are omitted
+  from the body, never sent as `null`.
+- **BREAKING**: API errors: the code is read from the body's `code` field, else its `error`
+  field, else `unknown_error`; it is never guessed from the HTTP status. A
+  body that is not JSON gives `INTERNAL_ERROR` with the real status. The
+  message is `detail`, else `title`, else `message`, else `HTTP <status>`
+  (the HTTP reason phrase is no longer used). Unknown codes pass through
+  verbatim.
+- `DocumentDescriptor.Environment` is documented as any environment name
+  (e.g. `sandbox`, `live`, `staging`) and is returned unchanged.
+- **BREAKING**: `ThumbnailOptions.Width` and `ThumbnailOptions.Format` are nullable with no
+  SDK default (they used to send `200` and `png`). An unset option is not
+  sent. `Documents.ThumbnailsAsync(id)` takes the options as an optional
+  parameter; with none set the body is `{}` and the API defaults apply
+  (width 400, `jpeg`). The SDK does not check option bounds; the API answers
+  `400 VALIDATION_ERROR`.
+- `Documents.DeleteAsync` is documented as idempotent: the API answers `204`
+  for an already-deleted document too.
+- **BREAKING**: The default code of `PoliPageGoneException` is `DOCUMENT_GONE`.
+
+### Added
+
+- `ThumbnailFormat.Webp`.
+- `PoliPageErrorCode` constants for the API codes `PublishInProgress`,
+  `EnvironmentMismatch`, `ProjectNotInEnvironment`, `TemplateNotFound`,
+  `DocumentGone`, `EnvironmentProtected`, `OrganizationPaymentGrace`,
+  `EmptyDocument`, `StorageAccessDenied`, `OrganizationMigrating`,
+  `ProjectNotFound`, `TemplateError`, `ThumbnailsNotAvailable`,
+  `RateLimitExceeded`, `RenderBodyTooLarge`, `DocumentTooLarge`,
+  `RenderTimeout`, and `InternalError`, which the API already returned.
+- `503 PUBLISH_IN_PROGRESS` (a render waiting on a publish) is retried like
+  any other 5xx and honours `Retry-After`; no new option is needed.
+
 ## [0.9.1] - 2026-06-22
 
 ### Fixed

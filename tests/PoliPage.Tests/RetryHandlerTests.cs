@@ -43,7 +43,7 @@ public sealed class RetryHandlerTests
         var server = WireMockServer.Start();
         var options = new PoliPageClientOptions
         {
-            ApiKey = "pp_test_unit",
+            ApiKey = "pp_sandbox_unit",
             BaseUrl = new Uri(server.Url!),
             MaxRetries = maxRetries,
             RetryDelay = retryDelay ?? TimeSpan.FromMilliseconds(50),
@@ -58,11 +58,10 @@ public sealed class RetryHandlerTests
         return new TestHarness(server, client);
     }
 
-    private static ProjectModeInput DefaultInput() => new()
+    private static RenderInput DefaultInput() => new()
     {
         Project = "billing",
         Template = "invoice",
-        Version = "1.0.0",
         Data = new { customer = "Acme" },
     };
 
@@ -80,7 +79,8 @@ public sealed class RetryHandlerTests
     /// 200 with a JSON descriptor on the second call, plus the presigned storage GET
     /// that PdfAsync follows to fetch the actual bytes.
     /// </summary>
-    private static void StubFailThenSucceed(WireMockServer server, int errorStatus, string? retryAfterHeader = null)
+    private static void StubFailThenSucceed(
+        WireMockServer server, int errorStatus, string? retryAfterHeader = null, string? errorBody = null)
     {
         const string Scenario = "fail-then-succeed";
         const string DocumentId = "doc_retry";
@@ -89,7 +89,7 @@ public sealed class RetryHandlerTests
             {
                 "documentId": "{{DocumentId}}",
                 "organizationId": "org_xyz",
-                "environment": "test",
+                "environment": "sandbox",
                 "format": "pdf",
                 "pageCount": 1,
                 "sizeBytes": 100,
@@ -102,6 +102,8 @@ public sealed class RetryHandlerTests
         var errorResponse = Response.Create().WithStatusCode(errorStatus);
         if (retryAfterHeader is not null)
             errorResponse = errorResponse.WithHeader("Retry-After", retryAfterHeader);
+        if (errorBody is not null)
+            errorResponse = errorResponse.WithHeader("Content-Type", "application/json").WithBody(errorBody);
 
         server.Given(Request.Create().WithPath("/v1/render").UsingPost())
               .InScenario(Scenario)
@@ -144,7 +146,7 @@ public sealed class RetryHandlerTests
             {
                 "documentId": "{{documentId}}",
                 "organizationId": "org_xyz",
-                "environment": "test",
+                "environment": "sandbox",
                 "format": "pdf",
                 "pageCount": 1,
                 "sizeBytes": 100,
@@ -230,7 +232,7 @@ public sealed class RetryHandlerTests
                .RespondWith(Response.Create()
                    .WithStatusCode(400)
                    .WithHeader("Content-Type", "application/json")
-                   .WithBody(@"{""code"":""VALIDATION_ERROR"",""message"":""bad input""}"));
+                   .WithBody(@"{""error"":""VALIDATION_ERROR"",""detail"":""bad input""}"));
 
         var act = async () => await RenderAsync(harness.Client);
 
@@ -250,7 +252,7 @@ public sealed class RetryHandlerTests
                .RespondWith(Response.Create()
                    .WithStatusCode(404)
                    .WithHeader("Content-Type", "application/json")
-                   .WithBody(@"{""code"":""NOT_FOUND"",""message"":""template not found""}"));
+                   .WithBody(@"{""error"":""NOT_FOUND"",""detail"":""template not found""}"));
 
         var act = async () => await RenderAsync(harness.Client);
 
@@ -284,7 +286,7 @@ public sealed class RetryHandlerTests
 
         var options = new PoliPageClientOptions
         {
-            ApiKey = "pp_test_unit",
+            ApiKey = "pp_sandbox_unit",
             BaseUrl = new Uri(server.Url!),
             MaxRetries = 2,
             RetryDelay = TimeSpan.FromMilliseconds(50),
@@ -325,7 +327,7 @@ public sealed class RetryHandlerTests
 
         var options = new PoliPageClientOptions
         {
-            ApiKey = "pp_test_unit",
+            ApiKey = "pp_sandbox_unit",
             BaseUrl = new Uri(server.Url!),
             MaxRetries = 2,
             RetryDelay = TimeSpan.FromMilliseconds(10),
@@ -388,6 +390,61 @@ public sealed class RetryHandlerTests
         // because Backoff caps the value and returns it exactly; the tolerance is for
         // the actual Task.Delay which may overshoot slightly.
         retryDelays[0].Should().BeCloseTo(TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(200));
+    }
+
+    // ------------------------------------------------------------------ //
+    // 9b. 503 PUBLISH_IN_PROGRESS: an ordinary retryable 5xx that honours Retry-After
+    // ------------------------------------------------------------------ //
+
+    private const string PublishInProgressBody =
+        """{"error":"PUBLISH_IN_PROGRESS","detail":"A publish is in progress for this project and environment"}""";
+
+    [Fact]
+    public async Task Retries_503_PUBLISH_IN_PROGRESS_after_the_Retry_After_delay_then_succeeds()
+    {
+        var retryDelays = new List<TimeSpan>();
+        using var harness = StartHarness(
+            maxRetries: 1,
+            onRetry: evt => retryDelays.Add(evt.Delay),
+            jitter: () => 1.0);
+        StubFailThenSucceed(harness.Server, 503, retryAfterHeader: "1", errorBody: PublishInProgressBody);
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var pdf = await RenderAsync(harness.Client);
+        stopwatch.Stop();
+
+        pdf.Should().NotBeEmpty();
+        PostLogEntries(harness.Server).Should().HaveCount(2, "one initial attempt + one retry");
+        retryDelays.Should().ContainSingle()
+            .Which.Should().BeCloseTo(TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(200));
+        stopwatch.Elapsed.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(900),
+            "the retry waits for the Retry-After delay");
+    }
+
+    [Fact]
+    public async Task PUBLISH_IN_PROGRESS_surfaces_with_its_code_once_retries_are_exhausted()
+    {
+        var retryDelays = new List<TimeSpan>();
+        using var harness = StartHarness(
+            maxRetries: 1,
+            onRetry: evt => retryDelays.Add(evt.Delay),
+            jitter: () => 1.0);
+        harness.Server.Given(Request.Create().WithPath("/v1/render").UsingPost())
+               .RespondWith(Response.Create()
+                   .WithStatusCode(503)
+                   .WithHeader("Retry-After", "1")
+                   .WithHeader("Content-Type", "application/json")
+                   .WithBody(PublishInProgressBody));
+
+        var act = async () => await RenderAsync(harness.Client);
+
+        var ex = await act.Should().ThrowAsync<PoliPageException>();
+        ex.Which.Code.Should().Be(PoliPageErrorCode.PublishInProgress);
+        ex.Which.StatusCode.Should().Be(503);
+        ex.Which.IsRetryable().Should().BeTrue();
+        PostLogEntries(harness.Server).Should().HaveCount(2, "1 initial + 1 retry before giving up");
+        retryDelays.Should().ContainSingle()
+            .Which.Should().BeCloseTo(TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(200));
     }
 
     // ------------------------------------------------------------------ //

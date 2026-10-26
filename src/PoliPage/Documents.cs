@@ -74,15 +74,15 @@ public sealed class Documents
 
     /// <summary>
     /// Soft-deletes a stored document. The presigned URL is invalidated and
-    /// subsequent <see cref="GetAsync"/> calls return 410 Gone. The bytes are
-    /// preserved on the CDN for the organisation's retention window.
+    /// subsequent <see cref="GetAsync"/> calls return <c>410 DOCUMENT_GONE</c>. The bytes are
+    /// preserved on the CDN for the organisation's retention window. Idempotent: deleting
+    /// an already-deleted document also resolves (the API answers <c>204</c>).
     /// </summary>
     /// <param name="documentId">The server-issued document identifier (e.g. <c>doc_…</c>).</param>
     /// <param name="options">Optional per-call overrides (timeout, extra headers).</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
     /// <exception cref="ArgumentException"><paramref name="documentId"/> is null, empty, or whitespace.</exception>
     /// <exception cref="PoliPageNotFoundException">The document does not exist.</exception>
-    /// <exception cref="PoliPageGoneException">The document was already soft-deleted.</exception>
     /// <exception cref="PoliPageException">Any other API failure.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public async Task DeleteAsync(
@@ -144,34 +144,35 @@ public sealed class Documents
     /// Renders thumbnail images for each page of a stored document.
     /// </summary>
     /// <param name="documentId">The server-issued document identifier (e.g. <c>doc_…</c>).</param>
-    /// <param name="thumbnailOptions">Width and format of the generated thumbnails.</param>
+    /// <param name="thumbnailOptions">
+    /// Optional width, format, quality and pages. <see langword="null"/>, or options with
+    /// nothing set, sends <c>{}</c> so every API default applies.
+    /// </param>
     /// <param name="options">Optional per-call overrides (timeout, extra headers).</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
     /// <returns>One <see cref="Thumbnail"/> per page of the source document.</returns>
     /// <exception cref="ArgumentException"><paramref name="documentId"/> is null, empty, or whitespace.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="thumbnailOptions"/> is <see langword="null"/>.</exception>
     /// <exception cref="PoliPageNotFoundException">The document does not exist.</exception>
     /// <exception cref="PoliPageException">Any other API failure.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public async Task<IReadOnlyList<Thumbnail>> ThumbnailsAsync(
         string documentId,
-        ThumbnailOptions thumbnailOptions,
+        ThumbnailOptions? thumbnailOptions = null,
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(documentId))
             throw new ArgumentException("documentId must not be null, empty, or whitespace.", nameof(documentId));
-        ArgumentNullException.ThrowIfNull(thumbnailOptions);
 
         var path = $"/v1/documents/{Uri.EscapeDataString(documentId)}/thumbnails";
         var idempotencyKey = options?.IdempotencyKey ?? Guid.NewGuid().ToString();
 
         // Why: the deployed API expects { "thumbnails": { ... } } so the server can extend the
         // envelope with non-option fields later (e.g. signed timestamps) without breaking clients.
-        // Reference: sdk-node/src/documents.ts:95-99.
+        // With no option set the body is {} and every API default applies.
         using var response = await _transport.PostAsync(
             path,
-            new ThumbnailsRequest(thumbnailOptions),
+            new ThumbnailsRequest(HasAnyOption(thumbnailOptions) ? thumbnailOptions : null),
             idempotencyKey,
             options,
             "application/json",
@@ -184,6 +185,9 @@ public sealed class Documents
 #pragma warning restore IL2026, IL3050
         return envelope?.Thumbnails ?? Array.Empty<Thumbnail>();
     }
+
+    private static bool HasAnyOption(ThumbnailOptions? o)
+        => o is not null && (o.Width is not null || o.Format is not null || o.Quality is not null || o.Pages is not null);
 
     private static int ParseDocumentPageCount(HttpResponseMessage response)
     {
@@ -205,7 +209,8 @@ public sealed class Documents
     }
 
     // Wire request envelope. Server expects the options nested under "thumbnails" so the
-    // wire shape can grow (e.g. signed timestamps) without breaking older clients.
+    // wire shape can grow (e.g. signed timestamps) without breaking older clients. A null
+    // Thumbnails is omitted by the transport serializer, leaving {}.
     private sealed record ThumbnailsRequest(
-        [property: System.Text.Json.Serialization.JsonPropertyName("thumbnails")] ThumbnailOptions Thumbnails);
+        [property: System.Text.Json.Serialization.JsonPropertyName("thumbnails")] ThumbnailOptions? Thumbnails);
 }

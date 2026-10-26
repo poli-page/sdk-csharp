@@ -12,7 +12,7 @@ public sealed class HookEventsTests
         {
             "documentId": "doc_abc",
             "organizationId": "org_x",
-            "environment": "test",
+            "environment": "sandbox",
             "format": "pdf",
             "pageCount": 1,
             "sizeBytes": 100,
@@ -22,11 +22,10 @@ public sealed class HookEventsTests
         }
         """;
 
-    private static ProjectModeInput Input() => new()
+    private static RenderInput Input() => new()
     {
         Project = "billing",
         Template = "invoice",
-        Version = "1.0.0",
         Data = new { customer = "Acme" },
     };
 
@@ -168,7 +167,7 @@ public sealed class HookEventsTests
         using var server = WireMockServer.Start();
         server.Given(Request.Create().WithPath("/v1/documents/doc_missing").UsingGet())
               .RespondWith(Response.Create().WithStatusCode(404)
-                  .WithBody("""{"code":"NOT_FOUND","detail":"missing"}"""));
+                  .WithBody("""{"error":"NOT_FOUND","detail":"missing"}"""));
 
         var errors = new List<Exception>();
         using var client = new PoliPageClient(new PoliPageClientOptions
@@ -240,7 +239,7 @@ public sealed class HookEventsTests
         using var server = WireMockServer.Start();
         server.Given(Request.Create().WithPath("/v1/documents/doc_x").UsingGet())
               .RespondWith(Response.Create().WithStatusCode(404)
-                  .WithBody("""{"code":"NOT_FOUND","detail":"missing"}"""));
+                  .WithBody("""{"error":"NOT_FOUND","detail":"missing"}"""));
 
         using var client = new PoliPageClient(new PoliPageClientOptions
         {
@@ -262,7 +261,7 @@ public sealed class HookEventsTests
         using var server = WireMockServer.Start();
         server.Given(Request.Create().WithPath("/v1/render").UsingPost())
               .RespondWith(Response.Create().WithStatusCode(500)
-                  .WithBody("""{"code":"INTERNAL_ERROR","detail":"oops"}"""));
+                  .WithBody("""{"error":"INTERNAL_ERROR","detail":"oops"}"""));
 
         var errors = new List<Exception>();
         using var client = new PoliPageClient(new PoliPageClientOptions

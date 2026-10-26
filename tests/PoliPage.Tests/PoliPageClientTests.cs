@@ -9,7 +9,7 @@ public sealed class PoliPageClientTests
     // Helpers
     // ------------------------------------------------------------------ //
 
-    private static PoliPageClientOptions ValidOptions(string apiKey = "pp_test_abc123") =>
+    private static PoliPageClientOptions ValidOptions(string apiKey = "pp_sandbox_abc123") =>
         new() { ApiKey = apiKey };
 
     // ------------------------------------------------------------------ //
@@ -37,6 +37,19 @@ public sealed class PoliPageClientTests
 
         act.Should().Throw<PoliPageException>()
             .Where(e => e.Code == PoliPageErrorCode.InvalidOptions);
+    }
+
+    [Theory]
+    [InlineData("pp_sandbox_0123456789abcdef0123456789abcdef")]
+    [InlineData("pp_live_0123456789abcdef0123456789abcdef")]
+    [InlineData("pp_staging_0123456789abcdef0123456789abcdef")]
+    [InlineData("pp_eu-west_0123456789abcdef0123456789abcdef")]
+    [InlineData("not-a-poli-page-key")]
+    public void Ctor_accepts_any_non_empty_ApiKey_whatever_its_environment(string apiKey)
+    {
+        Action act = () => new PoliPageClient(ValidOptions(apiKey)).Dispose();
+
+        act.Should().NotThrow("the API resolves the environment from the key; the SDK only checks it is present");
     }
 
     [Theory]
@@ -104,7 +117,7 @@ public sealed class PoliPageClientTests
     {
         var act = () =>
         {
-            using var client = new PoliPageClient(new PoliPageClientOptions { ApiKey = "pp_test_min" });
+            using var client = new PoliPageClient(new PoliPageClientOptions { ApiKey = "pp_sandbox_min" });
         };
 
         act.Should().NotThrow();

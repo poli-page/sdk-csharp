@@ -4,7 +4,7 @@ using PoliPage.Internal;
 namespace PoliPage;
 
 /// <summary>
-/// Groups all render operations: PDF, stream, preview, and document output.
+/// Groups all render operations: PDF bytes, PDF stream, and stored document.
 /// Accessed via <see cref="PoliPageClient.Render"/>.
 /// </summary>
 public sealed class Render
@@ -36,22 +36,20 @@ public sealed class Render
     /// <summary>
     /// Renders a stored project template to a PDF and returns the raw bytes.
     /// </summary>
-    /// <param name="input">The project template reference and optional data.</param>
+    /// <param name="input">The project, template and data to render.</param>
     /// <param name="options">Optional per-call overrides (idempotency key, timeout, extra headers).</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
     /// <returns>The raw PDF bytes.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="input"/> is <see langword="null"/>.</exception>
     /// <exception cref="PoliPageAuthException">The API returned 401 or 403.</exception>
-    /// <exception cref="PoliPageNotFoundException">The API returned 404 (project, template, or version not found).</exception>
+    /// <exception cref="PoliPageNotFoundException">The API returned 404 (e.g. <see cref="PoliPageErrorCode.TemplateNotFound"/>, <see cref="PoliPageErrorCode.ProjectNotInEnvironment"/>).</exception>
     /// <exception cref="PoliPageValidationException">The API returned 400 or 422 (invalid input).</exception>
     /// <exception cref="PoliPageRateLimitException">The API returned 429; <see cref="PoliPageRateLimitException.RetryAfter"/> exposes the server's retry hint.</exception>
-    /// <exception cref="PoliPagePaymentRequiredException">The API returned 402 (organisation has unpaid invoices).</exception>
-    /// <exception cref="PoliPageGoneException">The API returned 410 (resource permanently removed).</exception>
     /// <exception cref="PoliPageNetworkException">DNS, TCP, or TLS failure before the response was received.</exception>
     /// <exception cref="PoliPageException">Any other API failure, or a per-request timeout (<see cref="PoliPageErrorCode.Timeout"/>).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public async Task<byte[]> PdfAsync(
-        ProjectModeInput input,
+        RenderInput input,
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
@@ -69,7 +67,7 @@ public sealed class Render
     /// for disposing the returned stream, which releases the underlying
     /// HTTP response.
     /// </summary>
-    /// <param name="input">The project template reference and optional data.</param>
+    /// <param name="input">The project, template and data to render.</param>
     /// <param name="options">Optional per-call overrides (idempotency key, timeout, extra headers).</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
     /// <returns>
@@ -81,7 +79,7 @@ public sealed class Render
     /// <exception cref="PoliPageException">See <see cref="PdfAsync"/> for the full mapping.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public async Task<Stream> PdfStreamAsync(
-        ProjectModeInput input,
+        RenderInput input,
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
@@ -97,7 +95,7 @@ public sealed class Render
     /// Use this when you want to defer the binary download (e.g. queue the URL
     /// for a worker) or fetch metadata without paying for the bytes.
     /// </summary>
-    /// <param name="input">The project template reference and optional data.</param>
+    /// <param name="input">The project, template and data to render.</param>
     /// <param name="options">Optional per-call overrides (idempotency key, timeout, extra headers).</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
     /// <returns>
@@ -109,7 +107,7 @@ public sealed class Render
     /// <exception cref="PoliPageException">See <see cref="PdfAsync"/> for the full mapping.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public Task<DocumentDescriptor> DocumentAsync(
-        ProjectModeInput input,
+        RenderInput input,
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
@@ -123,7 +121,7 @@ public sealed class Render
     // expose the descriptor to the user need that — internal byte/stream consumers
     // call the closures directly).
     private async Task<DocumentDescriptor> RenderDocumentCoreAsync(
-        ProjectModeInput input,
+        RenderInput input,
         RequestOptions? options,
         CancellationToken cancellationToken)
     {
@@ -141,48 +139,6 @@ public sealed class Render
 
         var descriptor = await ParseDescriptorAsync(response, cancellationToken).ConfigureAwait(false);
         return descriptor with { Downloader = _downloader };
-    }
-
-    /// <summary>
-    /// Renders a template (project-mode or inline) and returns a paginated HTML
-    /// preview suitable for in-browser display. Unlike <see cref="PdfAsync"/>
-    /// this accepts the abstract <see cref="RenderInput"/> base so callers can
-    /// pass either <see cref="ProjectModeInput"/> or <see cref="InlineModeInput"/>.
-    /// </summary>
-    /// <param name="input">Project-mode or inline render input.</param>
-    /// <param name="options">Optional per-call overrides (idempotency key, timeout, extra headers).</param>
-    /// <param name="cancellationToken">Token to cancel the operation.</param>
-    /// <returns>A <see cref="PreviewResult"/> with the rendered HTML, total page count, and environment.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="input"/> is <see langword="null"/>.</exception>
-    /// <exception cref="PoliPageException">See <see cref="PdfAsync"/> for the full mapping.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    public async Task<PreviewResult> PreviewAsync(
-        RenderInput input,
-        RequestOptions? options = null,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(input);
-
-        var idempotencyKey = options?.IdempotencyKey ?? input.IdempotencyKey ?? Guid.NewGuid().ToString();
-
-        using var response = await _transport.PostAsync(
-            "/v1/render/preview",
-            input,
-            idempotencyKey,
-            options,
-            "application/json",
-            HttpCompletionOption.ResponseContentRead,
-            cancellationToken).ConfigureAwait(false);
-
-        var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-#pragma warning disable IL2026, IL3050
-        var preview = JsonSerializer.Deserialize<PreviewResult>(json, JsonOptions);
-#pragma warning restore IL2026, IL3050
-        return preview
-            ?? throw new PoliPageException(
-                PoliPageErrorCode.Unknown,
-                (int)response.StatusCode,
-                "Render.PreviewAsync: server returned 2xx with no JSON body.");
     }
 
     private static async Task<DocumentDescriptor> ParseDescriptorAsync(

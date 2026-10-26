@@ -25,7 +25,7 @@ public sealed class DocumentsTests
         var server = WireMockServer.Start();
         var client = new PoliPageClient(new PoliPageClientOptions
         {
-            ApiKey = "pp_test_unit",
+            ApiKey = "pp_sandbox_unit",
             BaseUrl = new Uri(server.Url!),
             MaxRetries = 0, // these tests don't exercise retry — keep them fast
         });
@@ -38,8 +38,7 @@ public sealed class DocumentsTests
             "organizationId": "org_xyz",
             "projectSlug": "billing",
             "templateSlug": "invoice",
-            "version": "1.0.0",
-            "environment": "test",
+            "environment": "sandbox",
             "format": "pdf",
             "pageCount": 3,
             "sizeBytes": 12345,
@@ -85,7 +84,7 @@ public sealed class DocumentsTests
         var entry = harness.Server.LogEntries.Should().ContainSingle().Subject;
         entry.RequestMessage!.Method.Should().Be("GET");
         entry.RequestMessage!.Path.Should().Be("/v1/documents/doc_abc123");
-        entry.RequestMessage!.Headers!["Authorization"].Should().Contain("Bearer pp_test_unit");
+        entry.RequestMessage!.Headers!["Authorization"].Should().Contain("Bearer pp_sandbox_unit");
         entry.RequestMessage!.Headers["Accept"].Should().Contain("application/json");
     }
 
@@ -124,7 +123,7 @@ public sealed class DocumentsTests
                .RespondWith(Response.Create()
                    .WithStatusCode(404)
                    .WithHeader("Content-Type", "application/json")
-                   .WithBody("""{"code":"DOCUMENT_NOT_FOUND","message":"no such document"}"""));
+                   .WithBody("""{"error":"DOCUMENT_NOT_FOUND","detail":"no such document"}"""));
 
         var act = async () => await harness.Client.Documents.GetAsync("doc_missing");
 
@@ -140,11 +139,12 @@ public sealed class DocumentsTests
                .RespondWith(Response.Create()
                    .WithStatusCode(410)
                    .WithHeader("Content-Type", "application/json")
-                   .WithBody("""{"code":"GONE","message":"soft-deleted"}"""));
+                   .WithBody("""{"error":"DOCUMENT_GONE","detail":"soft-deleted"}"""));
 
         var act = async () => await harness.Client.Documents.GetAsync("doc_deleted");
 
-        await act.Should().ThrowAsync<PoliPageGoneException>();
+        var ex = await act.Should().ThrowAsync<PoliPageGoneException>();
+        ex.Which.Code.Should().Be(PoliPageErrorCode.DocumentGone);
     }
 
     [Theory]
@@ -191,18 +191,17 @@ public sealed class DocumentsTests
     }
 
     [Fact]
-    public async Task DeleteAsync_throws_PoliPageGoneException_on_410()
+    public async Task DeleteAsync_is_idempotent_a_second_delete_resolves_on_204()
     {
         using var harness = StartHarness();
-        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_already_gone").UsingDelete())
-               .RespondWith(Response.Create()
-                   .WithStatusCode(410)
-                   .WithHeader("Content-Type", "application/json")
-                   .WithBody("""{"code":"GONE","message":"already deleted"}"""));
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_abc123").UsingDelete())
+               .RespondWith(Response.Create().WithStatusCode(204));
 
-        var act = async () => await harness.Client.Documents.DeleteAsync("doc_already_gone");
+        await harness.Client.Documents.DeleteAsync("doc_abc123");
+        var act = async () => await harness.Client.Documents.DeleteAsync("doc_abc123");
 
-        await act.Should().ThrowAsync<PoliPageGoneException>();
+        await act.Should().NotThrowAsync("the API answers 204 for an already-deleted document too");
+        harness.Server.LogEntries.Should().HaveCount(2);
     }
 
     [Fact]
@@ -213,7 +212,7 @@ public sealed class DocumentsTests
                .RespondWith(Response.Create()
                    .WithStatusCode(404)
                    .WithHeader("Content-Type", "application/json")
-                   .WithBody("""{"code":"NOT_FOUND","message":"no such document"}"""));
+                   .WithBody("""{"error":"NOT_FOUND","detail":"no such document"}"""));
 
         var act = async () => await harness.Client.Documents.DeleteAsync("doc_missing");
 
@@ -310,7 +309,7 @@ public sealed class DocumentsTests
                .RespondWith(Response.Create()
                    .WithStatusCode(404)
                    .WithHeader("Content-Type", "application/json")
-                   .WithBody("""{"code":"DOCUMENT_NOT_FOUND","message":"no such document"}"""));
+                   .WithBody("""{"error":"DOCUMENT_NOT_FOUND","detail":"no such document"}"""));
 
         var act = async () => await harness.Client.Documents.PreviewAsync("doc_missing");
 
@@ -407,14 +406,90 @@ public sealed class DocumentsTests
         thumbs.Should().BeEmpty();
     }
 
+    private static void StubThumbnails(TestHarness harness)
+    {
+        harness.Server.Given(Request.Create().WithPath("/v1/documents/doc_abc123/thumbnails").UsingPost())
+               .RespondWith(Response.Create()
+                   .WithStatusCode(200)
+                   .WithHeader("Content-Type", "application/json")
+                   .WithBody(SampleThumbnailsJson));
+    }
+
+    private static string SentBody(TestHarness harness)
+        => harness.Server.LogEntries.Should().ContainSingle().Subject.RequestMessage!.Body!;
+
     [Fact]
-    public async Task ThumbnailsAsync_throws_ArgumentNullException_when_options_is_null()
+    public async Task ThumbnailsAsync_with_no_options_sends_an_empty_object()
     {
         using var harness = StartHarness();
+        StubThumbnails(harness);
 
-        var act = async () => await harness.Client.Documents.ThumbnailsAsync("doc_abc", null!);
+        var thumbs = await harness.Client.Documents.ThumbnailsAsync("doc_abc123");
 
-        await act.Should().ThrowAsync<ArgumentNullException>().WithParameterName("thumbnailOptions");
+        thumbs.Should().HaveCount(2);
+        SentBody(harness).Should().Be("{}", "every API default applies when no option is set");
+    }
+
+    [Fact]
+    public async Task ThumbnailsAsync_with_all_options_unset_sends_an_empty_object()
+    {
+        using var harness = StartHarness();
+        StubThumbnails(harness);
+
+        await harness.Client.Documents.ThumbnailsAsync("doc_abc123", new ThumbnailOptions());
+
+        SentBody(harness).Should().Be("{}");
+    }
+
+    [Theory]
+    [InlineData("width")]
+    [InlineData("format")]
+    [InlineData("quality")]
+    [InlineData("pages")]
+    public async Task ThumbnailsAsync_sends_the_envelope_when_any_single_option_is_set(string option)
+    {
+        using var harness = StartHarness();
+        StubThumbnails(harness);
+        var thumbnailOptions = option switch
+        {
+            "width" => new ThumbnailOptions { Width = 320 },
+            "format" => new ThumbnailOptions { Format = ThumbnailFormat.Png },
+            "quality" => new ThumbnailOptions { Quality = 80 },
+            _ => new ThumbnailOptions { Pages = [2] },
+        };
+
+        await harness.Client.Documents.ThumbnailsAsync("doc_abc123", thumbnailOptions);
+
+        var inner = JsonDocument.Parse(SentBody(harness)).RootElement.GetProperty("thumbnails");
+        inner.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo([option]);
+    }
+
+    [Fact]
+    public async Task ThumbnailsAsync_sends_only_the_options_that_are_set()
+    {
+        using var harness = StartHarness();
+        StubThumbnails(harness);
+
+        await harness.Client.Documents.ThumbnailsAsync("doc_abc123", new ThumbnailOptions { Format = ThumbnailFormat.Webp });
+
+        var inner = JsonDocument.Parse(SentBody(harness)).RootElement.GetProperty("thumbnails");
+        inner.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(["format"]);
+        inner.GetProperty("format").GetString().Should().Be("webp");
+    }
+
+    [Fact]
+    public async Task ThumbnailsAsync_does_not_check_option_bounds_client_side()
+    {
+        using var harness = StartHarness();
+        StubThumbnails(harness);
+
+        await harness.Client.Documents.ThumbnailsAsync(
+            "doc_abc123",
+            new ThumbnailOptions { Width = 5000, Format = ThumbnailFormat.Png, Quality = 500 });
+
+        var inner = JsonDocument.Parse(SentBody(harness)).RootElement.GetProperty("thumbnails");
+        inner.GetProperty("width").GetInt32().Should().Be(5000, "the API answers 400 VALIDATION_ERROR; the SDK does not pre-check");
+        inner.GetProperty("quality").GetInt32().Should().Be(500);
     }
 
     [Theory]

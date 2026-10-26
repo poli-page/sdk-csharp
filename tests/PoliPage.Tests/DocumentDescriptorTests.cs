@@ -14,7 +14,6 @@ public sealed class DocumentDescriptorTests
             "projectSlug": "billing",
             "templateId": "tpl_i",
             "templateSlug": "invoice",
-            "version": "1.0.0",
             "environment": "live",
             "apiKeyId": "key_42",
             "format": "pdf",
@@ -38,6 +37,24 @@ public sealed class DocumentDescriptorTests
         },
     };
 #pragma warning restore CA1869
+
+    [Fact]
+    public void Deserialise_reads_back_any_environment_name_unchanged()
+    {
+        var json = SampleJson.Replace("\"environment\": \"live\"", "\"environment\": \"staging\"", StringComparison.Ordinal);
+
+#pragma warning disable IL2026, IL3050
+        var d = JsonSerializer.Deserialize<DocumentDescriptor>(json, Options);
+#pragma warning restore IL2026, IL3050
+
+        d!.Environment.Should().Be("staging", "environment is an open set: any name the API returns passes through");
+    }
+
+    [Fact]
+    public void Has_no_Version_property()
+    {
+        typeof(DocumentDescriptor).GetProperty("Version").Should().BeNull("versions are gone from the contract");
+    }
 
     [Fact]
     public void Deserialise_populates_apiKeyId()

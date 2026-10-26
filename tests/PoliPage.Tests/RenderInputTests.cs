@@ -18,13 +18,12 @@ public sealed class RenderInputTests
     };
 
     [Fact]
-    public void ProjectModeInput_serialises_Format_as_PascalCase()
+    public void RenderInput_serialises_Format_as_PascalCase()
     {
-        var input = new ProjectModeInput
+        var input = new RenderInput
         {
             Project = "billing",
             Template = "invoice",
-            Version = "1.0.0",
             Data = new { },
             Format = PageFormat.Letter,
         };
@@ -38,13 +37,12 @@ public sealed class RenderInputTests
     }
 
     [Fact]
-    public void ProjectModeInput_serialises_Orientation_as_lowercase()
+    public void RenderInput_serialises_Orientation_as_lowercase()
     {
-        var input = new ProjectModeInput
+        var input = new RenderInput
         {
             Project = "billing",
             Template = "invoice",
-            Version = "1.0.0",
             Data = new { },
             Orientation = Orientation.Landscape,
         };
@@ -58,13 +56,12 @@ public sealed class RenderInputTests
     }
 
     [Fact]
-    public void ProjectModeInput_serialises_Locale()
+    public void RenderInput_serialises_Locale()
     {
-        var input = new ProjectModeInput
+        var input = new RenderInput
         {
             Project = "billing",
             Template = "invoice",
-            Version = "1.0.0",
             Data = new { },
             Locale = "fr-FR",
         };
@@ -77,15 +74,14 @@ public sealed class RenderInputTests
     }
 
     [Fact]
-    public void ProjectModeInput_does_not_serialise_IdempotencyKey_to_wire_body()
+    public void RenderInput_does_not_serialise_IdempotencyKey_to_wire_body()
     {
         // IdempotencyKey is a header, never a body field. Even when set on the input,
         // serialisation must skip it. (We mark it [JsonIgnore].)
-        var input = new ProjectModeInput
+        var input = new RenderInput
         {
             Project = "billing",
             Template = "invoice",
-            Version = "1.0.0",
             Data = new { },
             IdempotencyKey = "key_abc",
         };
@@ -100,11 +96,10 @@ public sealed class RenderInputTests
     [Fact]
     public void Omitted_fields_are_absent_from_wire()
     {
-        var input = new ProjectModeInput
+        var input = new RenderInput
         {
             Project = "billing",
             Template = "invoice",
-            Version = "1.0.0",
             Data = new { },
         };
 

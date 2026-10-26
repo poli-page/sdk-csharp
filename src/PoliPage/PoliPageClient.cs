@@ -131,7 +131,7 @@ public sealed class PoliPageClient : IDisposable
     internal Uri BaseAddress { get; }
 
     /// <summary>
-    /// Provides access to render operations: PDF, stream, preview, and document output.
+    /// Provides access to render operations: PDF bytes, PDF stream, and stored document.
     /// </summary>
     public Render Render => _render;
 
@@ -247,7 +247,7 @@ public sealed class PoliPageClient : IDisposable
     /// on disk via <see cref="Render.PdfStreamAsync"/> + <see cref="Stream.CopyToAsync(Stream, CancellationToken)"/>.
     /// Streams without buffering the whole PDF into memory.
     /// </summary>
-    /// <param name="input">The project template reference and optional data.</param>
+    /// <param name="input">The project, template and data to render.</param>
     /// <param name="path">Destination file path. Existing files are overwritten.</param>
     /// <param name="options">Optional per-call overrides (idempotency key, timeout, extra headers).</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
@@ -256,7 +256,7 @@ public sealed class PoliPageClient : IDisposable
     /// <exception cref="PoliPageException">See <see cref="Render.PdfAsync"/> for the full mapping.</exception>
     /// <exception cref="IOException">The file at <paramref name="path"/> cannot be created or written.</exception>
     public async Task RenderToFileAsync(
-        ProjectModeInput input,
+        RenderInput input,
         string path,
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)

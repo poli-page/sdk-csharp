@@ -63,4 +63,12 @@ public sealed class PoliPageExceptionPayloadTests
 
         ex.ToPayload().Status.Should().BeNull();
     }
+
+    [Fact]
+    public void Gone_exception_convenience_constructors_default_to_DOCUMENT_GONE()
+    {
+        new PoliPageGoneException().Code.Should().Be(PoliPageErrorCode.DocumentGone);
+        new PoliPageGoneException("m").Code.Should().Be(PoliPageErrorCode.DocumentGone);
+        new PoliPageGoneException("m", new InvalidOperationException("inner")).Code.Should().Be(PoliPageErrorCode.DocumentGone);
+    }
 }

@@ -29,7 +29,7 @@ public sealed class RenderTests
         }
     }
 
-    private static TestHarness StartServerAndClient(string apiKey = "pp_test_unit")
+    private static TestHarness StartServerAndClient(string apiKey = "pp_sandbox_unit")
     {
         var server = WireMockServer.Start();
         var client = new PoliPageClient(new PoliPageClientOptions
@@ -59,8 +59,7 @@ public sealed class RenderTests
                 "organizationId": "org_xyz",
                 "projectSlug": "billing",
                 "templateSlug": "invoice",
-                "version": "1.0.0",
-                "environment": "test",
+                "environment": "sandbox",
                 "format": "pdf",
                 "pageCount": 1,
                 "sizeBytes": 100,
@@ -96,11 +95,10 @@ public sealed class RenderTests
             .Subject;
     }
 
-    private static ProjectModeInput DefaultInput() => new()
+    private static RenderInput DefaultInput() => new()
     {
         Project = "billing",
         Template = "invoice",
-        Version = "1.0.0",
         Data = new { customer = "Acme" },
     };
 
@@ -156,7 +154,7 @@ public sealed class RenderTests
     [Fact]
     public async Task PdfAsync_sends_Authorization_Bearer_header()
     {
-        using var harness = StartServerAndClient(apiKey: "pp_test_unit");
+        using var harness = StartServerAndClient(apiKey: "pp_sandbox_unit");
         var (server, client) = harness;
         StubRender(server);
 
@@ -164,7 +162,7 @@ public sealed class RenderTests
 
         var entry = PostEntry(server);
         var value = GetSingleHeader(entry.RequestMessage!.Headers!, "Authorization");
-        value.Should().Be("Bearer pp_test_unit");
+        value.Should().Be("Bearer pp_sandbox_unit");
     }
 
     // ------------------------------------------------------------------ //
@@ -272,11 +270,10 @@ public sealed class RenderTests
         var (server, client) = harness;
         StubRender(server);
 
-        var input = new ProjectModeInput
+        var input = new RenderInput
         {
             Project = "billing",
             Template = "invoice",
-            Version = "2.0.0",
             Data = new { customerName = "Acme Corp" },
         };
 
@@ -289,8 +286,81 @@ public sealed class RenderTests
 
         body.GetProperty("project").GetString().Should().Be("billing");
         body.GetProperty("template").GetString().Should().Be("invoice");
-        body.GetProperty("version").GetString().Should().Be("2.0.0");
         body.GetProperty("data").GetProperty("customerName").GetString().Should().Be("Acme Corp");
+    }
+
+    // ------------------------------------------------------------------ //
+    // 9b. Render body holds only the seven documented fields
+    // ------------------------------------------------------------------ //
+
+    [Fact]
+    public async Task PdfAsync_body_holds_exactly_the_seven_documented_fields_when_all_are_set()
+    {
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
+        StubRender(server);
+
+        await client.Render.PdfAsync(new RenderInput
+        {
+            Project = "billing",
+            Template = "invoice",
+            Data = new { customer = "Acme" },
+            Metadata = new RenderMetadata { ["orderId"] = "ord_1" },
+            Format = PageFormat.A4,
+            Orientation = Orientation.Portrait,
+            Locale = "fr-FR",
+            IdempotencyKey = "idem-1",
+        });
+
+        var body = JsonDocument.Parse(PostEntry(server).RequestMessage!.Body!).RootElement;
+        body.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(
+            ["project", "template", "data", "metadata", "format", "orientation", "locale"],
+            "the API rejects unknown fields; version, environment and idempotencyKey are never sent");
+    }
+
+    [Fact]
+    public async Task PdfAsync_body_omits_unset_optional_fields_instead_of_sending_null()
+    {
+        using var harness = StartServerAndClient();
+        var (server, client) = harness;
+        StubRender(server);
+
+        await client.Render.PdfAsync(DefaultInput());
+
+        var body = JsonDocument.Parse(PostEntry(server).RequestMessage!.Body!).RootElement;
+        body.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(["project", "template", "data"]);
+    }
+
+    [Fact]
+    public void RenderInput_is_the_only_render_input_type_and_has_no_Version()
+    {
+        typeof(RenderInput).IsSealed.Should().BeTrue("RenderInput is the only input type; no inline mode derives from it");
+        typeof(RenderInput).GetProperty("Version").Should().BeNull("versions are gone: a render uses the key's environment");
+        Type.GetType("PoliPage.ProjectModeInput, PoliPage").Should().BeNull();
+        Type.GetType("PoliPage.InlineModeInput, PoliPage").Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("Project", true)]
+    [InlineData("Template", true)]
+    [InlineData("Data", true)]
+    [InlineData("Metadata", false)]
+    [InlineData("Format", false)]
+    [InlineData("Orientation", false)]
+    [InlineData("Locale", false)]
+    public void RenderInput_requires_project_template_and_data_only(string property, bool required)
+    {
+        var isRequired = typeof(RenderInput).GetProperty(property)!
+            .IsDefined(typeof(System.Runtime.CompilerServices.RequiredMemberAttribute), inherit: false);
+
+        isRequired.Should().Be(required, "the contract makes project, template and data required and the rest optional");
+    }
+
+    [Fact]
+    public void Render_has_no_PreviewAsync_and_PreviewResult_is_gone()
+    {
+        typeof(Render).GetMethod("PreviewAsync").Should().BeNull("POST /v1/render/preview was removed from the API");
+        Type.GetType("PoliPage.PreviewResult, PoliPage").Should().BeNull();
     }
 
     // ------------------------------------------------------------------ //
@@ -397,7 +467,7 @@ public sealed class RenderTests
 
         using var client = new PoliPageClient(new PoliPageClientOptions
         {
-            ApiKey = "pp_test_unit",
+            ApiKey = "pp_sandbox_unit",
             BaseUrl = new Uri(server.Url!),   // SDK will use this
             HttpClient = callerHttpClient,      // BaseAddress on this must be ignored
         });
@@ -429,7 +499,7 @@ public sealed class RenderTests
             {
                 "documentId": "doc_abc123",
                 "organizationId": "org_xyz",
-                "environment": "test",
+                "environment": "sandbox",
                 "format": "pdf",
                 "pageCount": 1,
                 "sizeBytes": 100,
@@ -451,7 +521,7 @@ public sealed class RenderTests
 
         using var client = new PoliPageClient(new PoliPageClientOptions
         {
-            ApiKey = "pp_test_unit",
+            ApiKey = "pp_sandbox_unit",
             BaseUrl = new Uri(server.Url + "/api/"),
         });
 
@@ -510,13 +580,13 @@ public sealed class RenderTests
               .RespondWith(Response.Create()
                   .WithStatusCode(401)
                   .WithHeader("Content-Type", "application/json")
-                  .WithBody("{\"code\":\"INVALID_API_KEY\",\"message\":\"bad key\"}"));
+                  .WithBody("{\"error\":\"INVALID_API_KEY\",\"detail\":\"bad key\"}"));
 
         // MaxRetries=0 keeps the test fast — 401 isn't retried anyway, but explicit
         // is better than relying on it.
         using var clientWithoutRetry = new PoliPageClient(new PoliPageClientOptions
         {
-            ApiKey = "pp_test_unit",
+            ApiKey = "pp_sandbox_unit",
             BaseUrl = new Uri(server.Url!),
             MaxRetries = 0,
         });
@@ -550,8 +620,7 @@ public sealed class RenderTests
             "organizationId": "org_xyz",
             "projectSlug": "billing",
             "templateSlug": "invoice",
-            "version": "1.0.0",
-            "environment": "test",
+            "environment": "sandbox",
             "format": "pdf",
             "pageCount": 3,
             "sizeBytes": 12345,
@@ -638,7 +707,7 @@ public sealed class RenderTests
 
         using var client = new PoliPageClient(new PoliPageClientOptions
         {
-            ApiKey = "pp_test_unit",
+            ApiKey = "pp_sandbox_unit",
             BaseUrl = new Uri(server.Url!),
         });
 
@@ -673,7 +742,7 @@ public sealed class RenderTests
 
         using var client = new PoliPageClient(new PoliPageClientOptions
         {
-            ApiKey = "pp_test_unit",
+            ApiKey = "pp_sandbox_unit",
             BaseUrl = new Uri(server.Url!),
         });
 
@@ -707,84 +776,6 @@ public sealed class RenderTests
 
         act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*was not produced by a PoliPageClient*");
-    }
-
-    // ------------------------------------------------------------------ //
-    // 26. PreviewAsync — HTML preview, accepts both modes
-    // ------------------------------------------------------------------ //
-
-    private const string SamplePreviewJson = """
-        {
-            "html": "<html><body>Page 1</body><body>Page 2</body></html>",
-            "totalPages": 2,
-            "environment": "sandbox"
-        }
-        """;
-
-    [Fact]
-    public async Task PreviewAsync_returns_PreviewResult_from_JSON()
-    {
-        using var harness = StartServerAndClient();
-        var (server, client) = harness;
-        server.Given(Request.Create().WithPath("/v1/render/preview").UsingPost())
-              .RespondWith(Response.Create()
-                  .WithStatusCode(200)
-                  .WithHeader("Content-Type", "application/json")
-                  .WithBody(SamplePreviewJson));
-
-        var result = await client.Render.PreviewAsync(DefaultInput());
-
-        result.Html.Should().Contain("Page 1");
-        result.Html.Should().Contain("Page 2");
-        result.TotalPages.Should().Be(2);
-        result.Environment.Should().Be("sandbox");
-    }
-
-    [Fact]
-    public async Task PreviewAsync_accepts_InlineModeInput()
-    {
-        using var harness = StartServerAndClient();
-        var (server, client) = harness;
-        server.Given(Request.Create().WithPath("/v1/render/preview").UsingPost())
-              .RespondWith(Response.Create()
-                  .WithStatusCode(200)
-                  .WithHeader("Content-Type", "application/json")
-                  .WithBody(SamplePreviewJson));
-
-        // The point of taking RenderInput as the abstract base: this compiles.
-        var inline = new InlineModeInput { Template = "<html><body>Hi</body></html>" };
-        var result = await client.Render.PreviewAsync(inline);
-
-        result.TotalPages.Should().Be(2);
-    }
-
-    [Fact]
-    public async Task PreviewAsync_posts_to_preview_endpoint_with_Accept_json()
-    {
-        using var harness = StartServerAndClient();
-        var (server, client) = harness;
-        server.Given(Request.Create().WithPath("/v1/render/preview").UsingPost())
-              .RespondWith(Response.Create()
-                  .WithStatusCode(200)
-                  .WithHeader("Content-Type", "application/json")
-                  .WithBody(SamplePreviewJson));
-
-        await client.Render.PreviewAsync(DefaultInput());
-
-        var entry = PostEntry(server);
-        entry.RequestMessage!.Path.Should().Be("/v1/render/preview");
-        entry.RequestMessage!.Headers!["Accept"].Should().Contain("application/json");
-    }
-
-    [Fact]
-    public async Task PreviewAsync_throws_ArgumentNullException_when_input_is_null()
-    {
-        using var harness = StartServerAndClient();
-        var (_, client) = harness;
-
-        var act = async () => await client.Render.PreviewAsync(null!);
-
-        await act.Should().ThrowAsync<ArgumentNullException>().WithParameterName("input");
     }
 
     // ------------------------------------------------------------------ //
@@ -881,7 +872,7 @@ public sealed class RenderTests
 
         using var client = new PoliPageClient(new PoliPageClientOptions
         {
-            ApiKey = "pp_test_unit",
+            ApiKey = "pp_sandbox_unit",
             BaseUrl = new Uri(server.Url!),
         });
 
@@ -915,7 +906,7 @@ public sealed class RenderTests
 
         using var client = new PoliPageClient(new PoliPageClientOptions
         {
-            ApiKey = "pp_test_unit",
+            ApiKey = "pp_sandbox_unit",
             BaseUrl = new Uri(server.Url!),
             DownloadHttpClient = downloadHttp,
         });
