@@ -340,6 +340,22 @@ public sealed class RenderTests
         Type.GetType("PoliPage.InlineModeInput, PoliPage").Should().BeNull();
     }
 
+    [Theory]
+    [InlineData("Project", true)]
+    [InlineData("Template", true)]
+    [InlineData("Data", true)]
+    [InlineData("Metadata", false)]
+    [InlineData("Format", false)]
+    [InlineData("Orientation", false)]
+    [InlineData("Locale", false)]
+    public void RenderInput_requires_project_template_and_data_only(string property, bool required)
+    {
+        var isRequired = typeof(RenderInput).GetProperty(property)!
+            .IsDefined(typeof(System.Runtime.CompilerServices.RequiredMemberAttribute), inherit: false);
+
+        isRequired.Should().Be(required, "the contract makes project, template and data required and the rest optional");
+    }
+
     [Fact]
     public void Render_has_no_PreviewAsync_and_PreviewResult_is_gone()
     {
