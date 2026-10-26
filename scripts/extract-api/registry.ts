@@ -114,7 +114,7 @@ export const PUBLIC_EXCEPTIONS: readonly PublicException[] = [
   { name: 'PoliPageNotFoundException',        memberId: 'T:PoliPage.PoliPageNotFoundException',        statusCode: '404',       codes: ['NOT_FOUND', 'PROJECT_NOT_FOUND', 'PROJECT_NOT_IN_ENVIRONMENT', 'TEMPLATE_NOT_FOUND', 'DOCUMENT_NOT_FOUND'] },
   { name: 'PoliPageGoneException',            memberId: 'T:PoliPage.PoliPageGoneException',            statusCode: '410',       codes: ['DOCUMENT_GONE'] },
   { name: 'PoliPageValidationException',      memberId: 'T:PoliPage.PoliPageValidationException',      statusCode: '400 / 422', codes: ['VALIDATION'] },
-  { name: 'PoliPageRateLimitException',       memberId: 'T:PoliPage.PoliPageRateLimitException',       statusCode: '429',       codes: ['RATE_LIMIT'] },
+  { name: 'PoliPageRateLimitException',       memberId: 'T:PoliPage.PoliPageRateLimitException',       statusCode: '429',       codes: ['RATE_LIMIT_EXCEEDED', 'QUOTA_EXCEEDED', 'OVERAGE_CAP_EXCEEDED'] },
   { name: 'PoliPageNetworkException',         memberId: 'T:PoliPage.PoliPageNetworkException',         statusCode: '0',         codes: ['NETWORK', 'TIMEOUT'] },
   { name: 'PoliPageDownloadException',        memberId: 'T:PoliPage.PoliPageDownloadException',        statusCode: 'storage',   codes: ['DOWNLOAD_FAILED'] },
 ];
