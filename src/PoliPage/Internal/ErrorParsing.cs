@@ -9,9 +9,15 @@ internal static class ErrorParsing
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
+    // Code for an API error body that is JSON but carries neither `code` nor `error`.
+    private const string UnknownErrorCode = "unknown_error";
+
+    // The API's error body: { error, detail?, issues?, requestId }. `code` and `message`
+    // are older spellings still read for compatibility.
     private sealed class ErrorEnvelope
     {
         public string? Code { get; set; }
+        public string? Error { get; set; }
         public string? Detail { get; set; }
         public string? Title { get; set; }
         public string? Message { get; set; }
@@ -27,6 +33,7 @@ internal static class ErrorParsing
         HttpResponseMessage response, CancellationToken cancellationToken)
     {
         ErrorEnvelope? envelope = null;
+        var isJson = false;
         try
         {
             var rawBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -38,6 +45,7 @@ internal static class ErrorParsing
 #pragma warning disable IL2026, IL3050
                 envelope = JsonSerializer.Deserialize<ErrorEnvelope>(rawBody, JsonOptions);
 #pragma warning restore IL2026, IL3050
+                isJson = true;
             }
         }
         catch (Exception e) when (e is not OperationCanceledException)
@@ -49,14 +57,16 @@ internal static class ErrorParsing
         }
 
         var status = (int)response.StatusCode;
-        var code = envelope?.Code ?? DefaultCodeFor(status);
+        // The code is read from the body, never inferred from the status: a body that
+        // is not JSON (empty, HTML from a proxy, malformed) gives INTERNAL_ERROR.
+        var code = isJson
+            ? envelope?.Code ?? envelope?.Error ?? UnknownErrorCode
+            : PoliPageErrorCode.InternalError;
         // RFC 7807: prefer `detail` (specific reason) over `title` (generic name)
-        // over the legacy `message` field; fall back to the HTTP reason phrase
-        // and finally a canned status string. No "API error (NNN): CODE" synthesis.
+        // over the legacy `message` field. No "API error (NNN): CODE" synthesis.
         var message = envelope?.Detail
             ?? envelope?.Title
             ?? envelope?.Message
-            ?? response.ReasonPhrase
             ?? $"HTTP {status}";
         var requestId = envelope?.RequestId
             ?? (response.Headers.TryGetValues("X-Request-Id", out var v) ? v.FirstOrDefault() : null);
@@ -71,28 +81,12 @@ internal static class ErrorParsing
         {
             400 or 422 => new PoliPageValidationException(code, status, message, requestId),
             401 or 403 => new PoliPageAuthException(code, status, message, requestId),
-            402 => new PoliPagePaymentRequiredException(code, status, message, requestId),
             404 => new PoliPageNotFoundException(code, status, message, requestId),
             410 => new PoliPageGoneException(code, status, message, requestId),
             429 => new PoliPageRateLimitException(code, status, message, requestId, ParseRetryAfter(response)),
             _ => new PoliPageException(code, status, message, requestId),
         };
     }
-
-    private static string DefaultCodeFor(int status) => status switch
-    {
-        400 or 422 => PoliPageErrorCode.ValidationError,
-        401 => PoliPageErrorCode.InvalidApiKey,
-        402 => PoliPageErrorCode.PaymentRequired,
-        403 => PoliPageErrorCode.Forbidden,
-        404 => PoliPageErrorCode.NotFound,
-        410 => PoliPageErrorCode.Gone,
-        // 429 falls through to QuotaExceeded — the API discriminates QUOTA_EXCEEDED vs
-        // OVERAGE_CAP_EXCEEDED in the body; this is only the default when the body
-        // has no `code`. Callers should branch on PoliPageException.IsRateLimitError().
-        429 => PoliPageErrorCode.QuotaExceeded,
-        _ => PoliPageErrorCode.Unknown,
-    };
 
     private static bool LooksLikeJson(string s)
     {

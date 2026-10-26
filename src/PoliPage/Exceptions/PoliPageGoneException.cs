@@ -9,17 +9,17 @@ namespace PoliPage;
 public sealed class PoliPageGoneException : PoliPageException
 {
     /// <summary>Initialises a new instance of <see cref="PoliPageGoneException"/> with default values.</summary>
-    public PoliPageGoneException() : this(PoliPageErrorCode.Gone, 410, "Resource is permanently gone.") { }
+    public PoliPageGoneException() : this(PoliPageErrorCode.DocumentGone, 410, "Resource is permanently gone.") { }
 
     /// <summary>Initialises a new instance of <see cref="PoliPageGoneException"/> with the specified message.</summary>
     /// <param name="message">A human-readable description of the error.</param>
-    public PoliPageGoneException(string message) : this(PoliPageErrorCode.Gone, 410, message) { }
+    public PoliPageGoneException(string message) : this(PoliPageErrorCode.DocumentGone, 410, message) { }
 
     /// <summary>Initialises a new instance of <see cref="PoliPageGoneException"/> with the specified message and inner exception.</summary>
     /// <param name="message">A human-readable description of the error.</param>
     /// <param name="innerException">The exception that is the cause of the current exception.</param>
     public PoliPageGoneException(string message, Exception innerException)
-        : this(PoliPageErrorCode.Gone, 410, message, innerException: innerException) { }
+        : this(PoliPageErrorCode.DocumentGone, 410, message, innerException: innerException) { }
 
     /// <summary>
     /// Initialises a new instance of <see cref="PoliPageGoneException"/>.

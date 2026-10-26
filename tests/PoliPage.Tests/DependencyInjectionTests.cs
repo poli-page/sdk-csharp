@@ -11,7 +11,7 @@ public sealed class DependencyInjectionTests
     public void AddPoliPage_registers_PoliPageClient_as_singleton()
     {
         var services = new ServiceCollection();
-        services.AddPoliPage(o => o.ApiKey = "pp_test_unit");
+        services.AddPoliPage(o => o.ApiKey = "pp_sandbox_unit");
 
         using var sp = services.BuildServiceProvider();
         var c1 = sp.GetRequiredService<PoliPageClient>();
@@ -26,14 +26,14 @@ public sealed class DependencyInjectionTests
         var services = new ServiceCollection();
         services.AddPoliPage(o =>
         {
-            o.ApiKey = "pp_test_resolved";
+            o.ApiKey = "pp_sandbox_resolved";
             o.MaxRetries = 5;
         });
 
         using var sp = services.BuildServiceProvider();
         var opts = sp.GetRequiredService<IOptions<PoliPageClientOptions>>().Value;
 
-        opts.ApiKey.Should().Be("pp_test_resolved");
+        opts.ApiKey.Should().Be("pp_sandbox_resolved");
         opts.MaxRetries.Should().Be(5);
     }
 
@@ -41,7 +41,7 @@ public sealed class DependencyInjectionTests
     public void AddPoliPage_wires_IHttpClientFactory_named_clients()
     {
         var services = new ServiceCollection();
-        services.AddPoliPage(o => o.ApiKey = "pp_test_unit");
+        services.AddPoliPage(o => o.ApiKey = "pp_sandbox_unit");
 
         using var sp = services.BuildServiceProvider();
         var factory = sp.GetRequiredService<IHttpClientFactory>();
@@ -75,7 +75,7 @@ public sealed class DependencyInjectionTests
         var services = new ServiceCollection();
         services.AddPoliPage(o =>
         {
-            o.ApiKey = "pp_test_unit";
+            o.ApiKey = "pp_sandbox_unit";
             o.MaxRetries = -1;
         });
 

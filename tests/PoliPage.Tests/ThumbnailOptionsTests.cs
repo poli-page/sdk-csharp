@@ -14,6 +14,17 @@ public sealed class ThumbnailOptionsTests
     };
 
     [Fact]
+    public void Defaults_leave_every_option_unset_so_the_API_defaults_apply()
+    {
+        var opt = new ThumbnailOptions();
+
+        opt.Width.Should().BeNull();
+        opt.Format.Should().BeNull();
+        opt.Quality.Should().BeNull();
+        opt.Pages.Should().BeNull();
+    }
+
+    [Fact]
     public void Quality_serialises_when_set()
     {
         var opt = new ThumbnailOptions { Width = 320, Format = ThumbnailFormat.Jpeg, Quality = 85 };

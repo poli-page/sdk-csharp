@@ -25,7 +25,7 @@ public sealed class ErrorMappingTests
         }
     }
 
-    private static TestHarness StartServerAndClient(string apiKey = "pp_test_unit")
+    private static TestHarness StartServerAndClient(string apiKey = "pp_sandbox_unit")
     {
         var server = WireMockServer.Start();
         var client = new PoliPageClient(new PoliPageClientOptions
@@ -65,18 +65,18 @@ public sealed class ErrorMappingTests
               .RespondWith(response);
     }
 
-    private static string ErrorJson(string code, string message, string? requestId = null)
+    // The API's error body: { error, detail?, issues?, requestId }.
+    private static string ErrorJson(string code, string detail, string? requestId = null)
     {
         if (requestId is not null)
-            return $@"{{""code"":""{code}"",""message"":""{message}"",""requestId"":""{requestId}""}}";
-        return $@"{{""code"":""{code}"",""message"":""{message}""}}";
+            return $@"{{""error"":""{code}"",""detail"":""{detail}"",""requestId"":""{requestId}""}}";
+        return $@"{{""error"":""{code}"",""detail"":""{detail}""}}";
     }
 
-    private static ProjectModeInput DefaultInput() => new()
+    private static RenderInput DefaultInput() => new()
     {
         Project = "billing",
         Template = "invoice",
-        Version = "1.0.0",
         Data = new { customer = "Acme" },
     };
 
@@ -120,20 +120,35 @@ public sealed class ErrorMappingTests
     }
 
     // ------------------------------------------------------------------ //
-    // 3. 402 → PoliPagePaymentRequiredException
+    // 3. 402 has no dedicated subclass: payment grace is 403 ORGANIZATION_PAYMENT_GRACE
     // ------------------------------------------------------------------ //
 
     [Fact]
-    public async Task Status_402_throws_PoliPagePaymentRequiredException()
+    public async Task Status_402_throws_base_PoliPageException_with_code_verbatim()
     {
         using var harness = StartServerAndClient();
-        StubError(harness.Server, 402, ErrorJson("PAYMENT_REQUIRED", "Outstanding balance"));
+        StubError(harness.Server, 402, ErrorJson("SOMETHING_NEW", "Outstanding balance"));
 
         var act = async () => await CallRenderAsync(harness.Client);
 
-        var ex = await act.Should().ThrowAsync<PoliPagePaymentRequiredException>();
-        ex.Which.Code.Should().Be("PAYMENT_REQUIRED");
+        var ex = await act.Should().ThrowAsync<PoliPageException>();
+        ex.Which.GetType().Should().Be<PoliPageException>();
+        ex.Which.Code.Should().Be("SOMETHING_NEW");
         ex.Which.StatusCode.Should().Be(402);
+        Type.GetType("PoliPage.PoliPagePaymentRequiredException, PoliPage").Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Status_403_ORGANIZATION_PAYMENT_GRACE_throws_PoliPageAuthException()
+    {
+        using var harness = StartServerAndClient();
+        StubError(harness.Server, 403, ErrorJson("ORGANIZATION_PAYMENT_GRACE", "Payment overdue"));
+
+        var act = async () => await CallRenderAsync(harness.Client);
+
+        var ex = await act.Should().ThrowAsync<PoliPageAuthException>();
+        ex.Which.Code.Should().Be(PoliPageErrorCode.OrganizationPaymentGrace);
+        ex.Which.Message.Should().Be("Payment overdue");
     }
 
     // ------------------------------------------------------------------ //
@@ -171,19 +186,23 @@ public sealed class ErrorMappingTests
     }
 
     // ------------------------------------------------------------------ //
-    // 6. 404 + VERSION_NOT_FOUND code preserved as PoliPageNotFoundException
+    // 6. 404 { error: TEMPLATE_NOT_FOUND, detail } → code from `error`, message from `detail`
     // ------------------------------------------------------------------ //
 
     [Fact]
-    public async Task Status_404_with_VERSION_NOT_FOUND_code_still_maps_to_PoliPageNotFoundException()
+    public async Task Status_404_with_error_TEMPLATE_NOT_FOUND_surfaces_that_code_and_the_detail_as_message()
     {
         using var harness = StartServerAndClient();
-        StubError(harness.Server, 404, ErrorJson("VERSION_NOT_FOUND", "Version 9.9.9 not found"));
+        StubError(
+            harness.Server,
+            404,
+            @"{""error"":""TEMPLATE_NOT_FOUND"",""detail"":""Template 'invoice' not found in project 'billing'""}");
 
         var act = async () => await CallRenderAsync(harness.Client);
 
         var ex = await act.Should().ThrowAsync<PoliPageNotFoundException>();
-        ex.Which.Code.Should().Be("VERSION_NOT_FOUND", "envelope code must be preserved");
+        ex.Which.Code.Should().Be(PoliPageErrorCode.TemplateNotFound, "the code is read from the body, never inferred from the status");
+        ex.Which.Message.Should().Be("Template 'invoice' not found in project 'billing'");
         ex.Which.StatusCode.Should().Be(404);
     }
 
@@ -212,12 +231,12 @@ public sealed class ErrorMappingTests
     public async Task Status_410_throws_PoliPageGoneException()
     {
         using var harness = StartServerAndClient();
-        StubError(harness.Server, 410, ErrorJson("GONE", "Resource permanently removed"));
+        StubError(harness.Server, 410, ErrorJson("DOCUMENT_GONE", "Document was deleted"));
 
         var act = async () => await CallRenderAsync(harness.Client);
 
         var ex = await act.Should().ThrowAsync<PoliPageGoneException>();
-        ex.Which.Code.Should().Be("GONE");
+        ex.Which.Code.Should().Be(PoliPageErrorCode.DocumentGone);
         ex.Which.StatusCode.Should().Be(410);
     }
 
@@ -305,11 +324,11 @@ public sealed class ErrorMappingTests
     }
 
     // ------------------------------------------------------------------ //
-    // 13. 500 with no body → base PoliPageException, UNKNOWN code
+    // 13. 500 with no body → base PoliPageException, INTERNAL_ERROR code
     // ------------------------------------------------------------------ //
 
     [Fact]
-    public async Task Status_500_throws_base_PoliPageException_with_UNKNOWN_code_when_body_missing()
+    public async Task Status_500_throws_base_PoliPageException_with_INTERNAL_ERROR_code_when_body_missing()
     {
         using var harness = StartServerAndClient();
         // No body — just the status code.
@@ -321,8 +340,9 @@ public sealed class ErrorMappingTests
         var ex = await act.Should().ThrowAsync<PoliPageException>();
         // Must be the exact base type, not a subclass.
         ex.Which.GetType().Should().Be<PoliPageException>();
-        ex.Which.Code.Should().Be(PoliPageErrorCode.Unknown);
+        ex.Which.Code.Should().Be(PoliPageErrorCode.InternalError, "a body that is not JSON gives INTERNAL_ERROR");
         ex.Which.StatusCode.Should().Be(500);
+        ex.Which.Message.Should().Be("HTTP 500");
     }
 
     // ------------------------------------------------------------------ //
@@ -341,11 +361,11 @@ public sealed class ErrorMappingTests
 
         var act = async () => await CallRenderAsync(harness.Client);
 
-        // Body parsing must not throw; we fall back to status-based defaults.
+        // Body parsing must not throw; a non-JSON body gives INTERNAL_ERROR with the real status.
         var ex = await act.Should().ThrowAsync<PoliPageException>();
         ex.Which.GetType().Should().Be<PoliPageException>();
         ex.Which.StatusCode.Should().Be(502);
-        ex.Which.Code.Should().Be(PoliPageErrorCode.Unknown);
+        ex.Which.Code.Should().Be(PoliPageErrorCode.InternalError);
     }
 
     // ------------------------------------------------------------------ //
@@ -403,21 +423,94 @@ public sealed class ErrorMappingTests
     }
 
     // ------------------------------------------------------------------ //
-    // 18. Message falls back to ReasonPhrase when envelope lacks message
+    // 18. Message falls back to "HTTP <status>" when the body has no detail, title or message
     // ------------------------------------------------------------------ //
 
     [Fact]
-    public async Task Exception_message_falls_back_to_ReasonPhrase_when_envelope_lacks_message()
+    public async Task Exception_message_falls_back_to_HTTP_status_when_body_has_no_message_field()
     {
         using var harness = StartServerAndClient();
-        // Envelope has only code, no message field.
-        StubError(harness.Server, 400, @"{""code"":""VALIDATION_ERROR""}");
+        StubError(harness.Server, 400, @"{""error"":""VALIDATION_ERROR""}");
 
         var act = async () => await CallRenderAsync(harness.Client);
 
         var ex = await act.Should().ThrowAsync<PoliPageValidationException>();
-        // WireMock returns "Bad Request" as the reason phrase for 400.
-        ex.Which.Message.Should().NotBeNullOrEmpty("message must fall back to reason phrase or HTTP status string");
+        ex.Which.Message.Should().Be("HTTP 400");
+    }
+
+    // ------------------------------------------------------------------ //
+    // 18b. Code and message precedence
+    // ------------------------------------------------------------------ //
+
+    [Fact]
+    public async Task Code_field_wins_over_error_field()
+    {
+        using var harness = StartServerAndClient();
+        StubError(harness.Server, 400, @"{""code"":""FROM_CODE"",""error"":""FROM_ERROR"",""detail"":""d""}");
+
+        var act = async () => await CallRenderAsync(harness.Client);
+
+        var ex = await act.Should().ThrowAsync<PoliPageValidationException>();
+        ex.Which.Code.Should().Be("FROM_CODE");
+    }
+
+    [Fact]
+    public async Task Legacy_code_and_message_body_is_still_read()
+    {
+        using var harness = StartServerAndClient();
+        StubError(harness.Server, 401, @"{""code"":""INVALID_API_KEY"",""message"":""Invalid API key""}");
+
+        var act = async () => await CallRenderAsync(harness.Client);
+
+        var ex = await act.Should().ThrowAsync<PoliPageAuthException>();
+        ex.Which.Code.Should().Be("INVALID_API_KEY");
+        ex.Which.Message.Should().Be("Invalid API key");
+    }
+
+    [Theory]
+    [InlineData(400)]
+    [InlineData(404)]
+    [InlineData(410)]
+    [InlineData(429)]
+    [InlineData(500)]
+    public async Task JSON_body_without_code_or_error_gives_unknown_error_whatever_the_status(int status)
+    {
+        using var harness = StartServerAndClient();
+        StubError(harness.Server, status, @"{""detail"":""something went wrong""}");
+
+        var act = async () => await CallRenderAsync(harness.Client);
+
+        var ex = await act.Should().ThrowAsync<PoliPageException>();
+        ex.Which.Code.Should().Be("unknown_error", "the SDK never infers a code from a status");
+        ex.Which.StatusCode.Should().Be(status);
+        ex.Which.Message.Should().Be("something went wrong");
+    }
+
+    [Fact]
+    public async Task Message_prefers_detail_then_title_then_message()
+    {
+        using var harness = StartServerAndClient();
+        StubError(harness.Server, 400, @"{""error"":""VALIDATION_ERROR"",""title"":""Bad Request"",""message"":""legacy""}");
+
+        var act = async () => await CallRenderAsync(harness.Client);
+
+        var ex = await act.Should().ThrowAsync<PoliPageValidationException>();
+        ex.Which.Message.Should().Be("Bad Request", "title is used when detail is absent, before message");
+    }
+
+    [Fact]
+    public async Task Message_prefers_detail_over_title_and_message()
+    {
+        using var harness = StartServerAndClient();
+        StubError(
+            harness.Server,
+            400,
+            @"{""error"":""VALIDATION_ERROR"",""detail"":""Unknown field: version"",""title"":""Bad Request"",""message"":""legacy""}");
+
+        var act = async () => await CallRenderAsync(harness.Client);
+
+        var ex = await act.Should().ThrowAsync<PoliPageValidationException>();
+        ex.Which.Message.Should().Be("Unknown field: version");
     }
 
     // ------------------------------------------------------------------ //
@@ -430,7 +523,7 @@ public sealed class ErrorMappingTests
         // The .invalid TLD is reserved per RFC 2606 — guaranteed DNS failure.
         using var client = new PoliPageClient(new PoliPageClientOptions
         {
-            ApiKey = "pp_test_unit",
+            ApiKey = "pp_sandbox_unit",
             BaseUrl = new Uri("http://nonexistent.invalid"),
             RequestTimeout = TimeSpan.FromSeconds(5),
             // Why: testing error mapping, not retry behavior.
@@ -464,7 +557,7 @@ public sealed class ErrorMappingTests
 
         using var slowClient = new PoliPageClient(new PoliPageClientOptions
         {
-            ApiKey = "pp_test_unit",
+            ApiKey = "pp_sandbox_unit",
             BaseUrl = new Uri(harness.Server.Url!),
             RequestTimeout = TimeSpan.FromMilliseconds(150),
             // Why: testing timeout mapping, not retry behavior. Retrying a timeout would

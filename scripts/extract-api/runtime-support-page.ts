@@ -21,6 +21,6 @@ The minimum supported target framework is **.NET 8 LTS** (supported through Nove
 
 ## Browsers (Blazor WebAssembly)
 
-Not supported. API keys (\`pp_test_*\`, \`pp_live_*\`) are secrets and must never ship to a browser. Call the SDK from a backend (ASP.NET Core, Worker Service, Azure Function, AWS Lambda) and proxy the result. Blazor Server is fine because the SDK runs on the server.
+Not supported. API keys (\`pp_sandbox_*\`, \`pp_live_*\`) are secrets and must never ship to a browser. Call the SDK from a backend (ASP.NET Core, Worker Service, Azure Function, AWS Lambda) and proxy the result. Blazor Server is fine because the SDK runs on the server.
 `;
 }

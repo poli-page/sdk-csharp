@@ -36,7 +36,7 @@ var client = new PoliPageClient(new PoliPageClientOptions
 
 The client exposes the operations through a namespaced property:
 
-- [\`Render\`](./methods/render-pdf/) — render PDFs (bytes, streaming, preview, or stored document).
+- [\`Render\`](./methods/render-pdf/) — render PDFs (bytes, streaming, or stored document).
 
 ## See also
 - [Types](../types/)

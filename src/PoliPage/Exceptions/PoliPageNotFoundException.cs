@@ -2,9 +2,9 @@ namespace PoliPage;
 
 /// <summary>
 /// Thrown when the API responds with HTTP 404.
-/// Indicates that the requested resource (project, template, document, or version) does not exist.
+/// Indicates that the requested resource (project, template or document) does not exist.
 /// Check <see cref="PoliPageException.Code"/> for <see cref="PoliPageErrorCode.NotFound"/>,
-/// <see cref="PoliPageErrorCode.VersionNotFound"/>, or <see cref="PoliPageErrorCode.DocumentNotFound"/>
+/// <see cref="PoliPageErrorCode.TemplateNotFound"/>, <see cref="PoliPageErrorCode.DocumentNotFound"/> or another 404 code
 /// to identify which resource was missing.
 /// </summary>
 public sealed class PoliPageNotFoundException : PoliPageException

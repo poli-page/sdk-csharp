@@ -10,7 +10,7 @@ export interface PublicMethod {
   readonly slug: string;
   /** Human-facing display name (e.g. `client.Render.PdfAsync`). */
   readonly displayName: string;
-  /** XML doc member id, e.g. `M:PoliPage.Render.PdfAsync(PoliPage.ProjectModeInput,PoliPage.RequestOptions,System.Threading.CancellationToken)`. */
+  /** XML doc member id, e.g. `M:PoliPage.Render.PdfAsync(PoliPage.RenderInput,PoliPage.RequestOptions,System.Threading.CancellationToken)`. */
   readonly memberId: string;
   /** File under `examples/` to embed in `## Example`. Missing file fails the build. */
   readonly exampleFile: string;
@@ -58,16 +58,16 @@ export const PUBLIC_METHODS: readonly PublicMethod[] = [
     slug: 'render-pdf',
     displayName: 'client.Render.PdfAsync',
     memberId:
-      'M:PoliPage.Render.PdfAsync(PoliPage.ProjectModeInput,PoliPage.RequestOptions,System.Threading.CancellationToken)',
+      'M:PoliPage.Render.PdfAsync(PoliPage.RenderInput,PoliPage.RequestOptions,System.Threading.CancellationToken)',
     exampleFile: 'render-pdf.cs',
     signature:
-      'Task<byte[]> PdfAsync(ProjectModeInput input, RequestOptions? options = null, CancellationToken cancellationToken = default)',
+      'Task<byte[]> PdfAsync(RenderInput input, RequestOptions? options = null, CancellationToken cancellationToken = default)',
     parameters: [
       {
         name: 'input',
-        type: 'ProjectModeInput',
+        type: 'RenderInput',
         required: true,
-        description: 'The project template reference (Project + Template + Version) and optional Data payload.',
+        description: 'The project, template and data to render (Project + Template + Data), plus optional Metadata, Format, Orientation and Locale.',
       },
       {
         name: 'options',
@@ -104,8 +104,6 @@ export const PUBLIC_TYPES: readonly PublicType[] = [
   { name: 'RequestOptions',         memberId: 'T:PoliPage.RequestOptions',         kind: 'record' },
   { name: 'RetryEvent',             memberId: 'T:PoliPage.RetryEvent',             kind: 'record' },
   { name: 'RenderInput',            memberId: 'T:PoliPage.RenderInput',            kind: 'record' },
-  { name: 'ProjectModeInput',       memberId: 'T:PoliPage.ProjectModeInput',       kind: 'record' },
-  { name: 'InlineModeInput',        memberId: 'T:PoliPage.InlineModeInput',        kind: 'record' },
   { name: 'RenderMetadata',         memberId: 'T:PoliPage.RenderMetadata',         kind: 'class' },
   { name: 'PoliPageErrorCode',      memberId: 'T:PoliPage.PoliPageErrorCode',      kind: 'class' },
 ];
@@ -113,11 +111,10 @@ export const PUBLIC_TYPES: readonly PublicType[] = [
 export const PUBLIC_EXCEPTIONS: readonly PublicException[] = [
   { name: 'PoliPageException',                memberId: 'T:PoliPage.PoliPageException',                statusCode: 'any',       codes: ['*'] },
   { name: 'PoliPageAuthException',            memberId: 'T:PoliPage.PoliPageAuthException',            statusCode: '401 / 403', codes: ['UNAUTHORIZED', 'FORBIDDEN'] },
-  { name: 'PoliPageNotFoundException',        memberId: 'T:PoliPage.PoliPageNotFoundException',        statusCode: '404',       codes: ['NOT_FOUND', 'VERSION_NOT_FOUND', 'DOCUMENT_NOT_FOUND'] },
-  { name: 'PoliPageGoneException',            memberId: 'T:PoliPage.PoliPageGoneException',            statusCode: '410',       codes: ['GONE'] },
+  { name: 'PoliPageNotFoundException',        memberId: 'T:PoliPage.PoliPageNotFoundException',        statusCode: '404',       codes: ['NOT_FOUND', 'PROJECT_NOT_FOUND', 'PROJECT_NOT_IN_ENVIRONMENT', 'TEMPLATE_NOT_FOUND', 'DOCUMENT_NOT_FOUND'] },
+  { name: 'PoliPageGoneException',            memberId: 'T:PoliPage.PoliPageGoneException',            statusCode: '410',       codes: ['DOCUMENT_GONE'] },
   { name: 'PoliPageValidationException',      memberId: 'T:PoliPage.PoliPageValidationException',      statusCode: '400 / 422', codes: ['VALIDATION'] },
   { name: 'PoliPageRateLimitException',       memberId: 'T:PoliPage.PoliPageRateLimitException',       statusCode: '429',       codes: ['RATE_LIMIT'] },
-  { name: 'PoliPagePaymentRequiredException', memberId: 'T:PoliPage.PoliPagePaymentRequiredException', statusCode: '402',       codes: ['PAYMENT_REQUIRED'] },
   { name: 'PoliPageNetworkException',         memberId: 'T:PoliPage.PoliPageNetworkException',         statusCode: '0',         codes: ['NETWORK', 'TIMEOUT'] },
   { name: 'PoliPageDownloadException',        memberId: 'T:PoliPage.PoliPageDownloadException',        statusCode: 'storage',   codes: ['DOWNLOAD_FAILED'] },
 ];

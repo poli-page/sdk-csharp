@@ -40,10 +40,10 @@ public sealed record DocumentDescriptor
     /// <summary>Template slug when the render referenced a project template.</summary>
     [JsonPropertyName("templateSlug")] public string? TemplateSlug { get; init; }
 
-    /// <summary>Template version (semver) when the render referenced a project template.</summary>
-    [JsonPropertyName("version")] public string? Version { get; init; }
-
-    /// <summary>API environment (e.g. <c>live</c>, <c>test</c>).</summary>
+    /// <summary>
+    /// The environment name, e.g. <c>sandbox</c>, <c>live</c>, <c>staging</c>. Any name the
+    /// API returns is passed through unchanged.
+    /// </summary>
     [JsonPropertyName("environment")] public required string Environment { get; init; }
 
     /// <summary>Identifier of the API key used to create the document, when available.</summary>
