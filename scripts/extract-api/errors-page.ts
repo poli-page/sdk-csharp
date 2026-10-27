@@ -49,7 +49,7 @@ Every failure thrown by the SDK is a \`PoliPageException\` or a subclass. The ba
 
 ## Wire-level codes
 
-These constants live on the static \`PoliPageErrorCode\` class. The API codes are the exact strings the API returns in its JSON error body (the \`error\` field); the lowercase codes and \`DOWNLOAD_FAILED\` and \`UNKNOWN\` are raised by the SDK itself. \`Code\` carries any other code the API returns, verbatim.
+These constants live on the static \`PoliPageErrorCode\` class. The API codes are the exact strings the API returns in its JSON error body (the \`error\` field); \`invalid_options\`, \`timeout\`, \`network_error\`, \`DOWNLOAD_FAILED\` and \`UNKNOWN\` are raised by the SDK itself. \`Code\` carries any other code the API returns, verbatim. The SDK never raises \`aborted\`: cancelling your own \`CancellationToken\` propagates as \`OperationCanceledException\`, not as a \`PoliPageException\`, so catch that instead (see [Cancellation](../../production/cancellation/)).
 
 \`\`\`csharp
 using PoliPage;

@@ -36,9 +36,11 @@ await stream.CopyToAsync(Response.Body);
 
 ## Write to file (`PoliPageClient.RenderToFileAsync`)
 
-The client exposes a helper that streams bytes directly to disk with bounded memory. Parent directories are created automatically.
+The client exposes a helper that streams bytes directly to disk with bounded memory. It does not create parent directories: create the target directory first, or the write throws `DirectoryNotFoundException`.
 
 ```csharp
+Directory.CreateDirectory("./invoices");
+
 await client.RenderToFileAsync(
     new RenderInput
     {
@@ -75,6 +77,8 @@ var client = new PoliPageClient(new PoliPageClientOptions
 {
     ApiKey = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
 });
+
+Directory.CreateDirectory("./invoices");
 
 await client.RenderToFileAsync(
     new RenderInput

@@ -83,7 +83,8 @@ See [MIGRATION.md](MIGRATION.md#from-09x-to-0100) for the upgrade guide.
   `Category=Integration`) render `getting-started`/`welcome` with a
   `sandbox` key, then get, preview and delete the stored document. The new
   `Integration` workflow runs them nightly and on demand when the
-  `POLI_PAGE_API_KEY` secret is set, and logs a skip otherwise.
+  `POLI_PAGE_API_KEY` secret is set, and logs a skip otherwise. The tests
+  skip on a key that is not `pp_sandbox_…`, and the workflow fails on one.
 
 ## [0.9.1] - 2026-06-22
 

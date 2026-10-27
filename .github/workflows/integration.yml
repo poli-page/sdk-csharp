@@ -4,7 +4,9 @@ name: Integration
 # demand. The key comes from the POLI_PAGE_API_KEY secret: a `pp_sandbox_` key
 # of an organization whose `getting-started` project is untouched (the tests
 # render `getting-started`/`welcome`, then get, preview and delete the stored
-# document). Without that secret the job logs a skip and succeeds.
+# document). Without that secret the job logs a skip and succeeds. A key that
+# is set but is not a full `pp_sandbox_` key fails the job: the tests skip on
+# any other key, so the run would pass without testing anything.
 #
 # The optional POLI_PAGE_BASE_URL secret overrides the API host; unset, the
 # SDK default applies. A secret is masked in the public logs, so no hostname
@@ -38,9 +40,14 @@ jobs:
           if [ -z "$POLI_PAGE_API_KEY" ]; then
             echo "::notice::POLI_PAGE_API_KEY secret is not set: skipping the integration tests."
             echo "present=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          # Whole-string match, so a value with a second line cannot pass on one good line.
+          if ! [[ "$POLI_PAGE_API_KEY" =~ ^pp_sandbox_[0-9a-f]{32}$ ]]; then
+            echo "::error::POLI_PAGE_API_KEY secret must be a sandbox key (pp_sandbox_ followed by 32 lowercase hex characters): the integration tests render in sandbox."
+            exit 1
+          fi
+          echo "present=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.secret.outputs.present == 'true'

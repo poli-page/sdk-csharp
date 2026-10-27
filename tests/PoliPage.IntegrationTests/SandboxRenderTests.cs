@@ -26,7 +26,7 @@ public sealed class SandboxRenderTests
 
         var doc = await client.Render.DocumentAsync(Sandbox.Welcome);
         doc.DocumentId.Should().NotBeNullOrEmpty();
-        doc.Environment.Should().Be(Sandbox.KeyEnvironment());
+        doc.Environment.Should().Be("sandbox");
         doc.PageCount.Should().BeGreaterThan(0);
 
         var fetched = await client.Documents.GetAsync(doc.DocumentId);

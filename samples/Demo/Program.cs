@@ -193,11 +193,12 @@ Console.WriteLine($"  {Ansi.Green("✔")} deleted {doc.DocumentId}");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 9. not-found — DELIBERATELY render a template that does not exist, then
-//    catch the error. Every failure — API errors, network failures, timeouts,
-//    caller aborts — surfaces as `PoliPageException` (or a more specific
-//    subclass: PoliPageNotFoundException, PoliPageAuthException, etc.).
-//    Inspect `Code`, `StatusCode`, `Message`, `RequestId`, or pattern-match on
-//    the subclass.
+//    catch the error. API errors, network failures and timeouts surface as
+//    `PoliPageException` (or a more specific subclass: PoliPageNotFoundException,
+//    PoliPageAuthException, etc.). Inspect `Code`, `StatusCode`, `Message`,
+//    `RequestId`, or pattern-match on the subclass. Cancelling your own
+//    `CancellationToken` is not an SDK error: it propagates as
+//    `OperationCanceledException`, never as `PoliPageException`.
 // ─────────────────────────────────────────────────────────────────────────────
 Ansi.Step(9, totalSteps, "not-found — DEMO ONLY (we trigger an error on purpose)");
 Console.WriteLine(Ansi.Yellow("  ⚠  This step is intentional — the SDK is about to throw, but the"));

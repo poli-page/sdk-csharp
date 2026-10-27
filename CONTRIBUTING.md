@@ -30,7 +30,8 @@ or analyzer violation.
 
 Integration tests live in `tests/PoliPage.IntegrationTests` and hit the
 real API. Every test carries the `Category=Integration` trait and is
-skipped when `POLI_PAGE_API_KEY` is unset or empty. Use a `sandbox` key
+skipped when `POLI_PAGE_API_KEY` is unset or empty, or is not a `sandbox`
+key: they never render into a counted environment. Use a `sandbox` key
 (`pp_sandbox_…`) of an organization whose `getting-started` project is
 untouched; `POLI_PAGE_BASE_URL` (optional) overrides the API host.
 
@@ -42,8 +43,9 @@ dotnet test tests/PoliPage.IntegrationTests --filter "Category=Integration"
 CI (`ci.yml`, `release.yml`) excludes them with
 `--filter "Category!=Integration"`. The `Integration` workflow runs them
 nightly and on `workflow_dispatch` with the `POLI_PAGE_API_KEY` (and
-optional `POLI_PAGE_BASE_URL`) repo secrets, and logs a skip when the key
-secret is not set.
+optional `POLI_PAGE_BASE_URL`) repo secrets, logs a skip when the key
+secret is not set, and fails when it is set but is not a full `pp_sandbox_`
+key.
 
 ## Releasing
 
