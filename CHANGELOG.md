@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-26
+
 Breaking: implements the environments contract. A key carries its
 environment (`pp_{env}_…`, e.g. `pp_sandbox_…`, `pp_live_…`,
 `pp_staging_…`) and a render uses the project's copy published in that
 environment. There is no deprecation window and no compatibility shim.
+See [MIGRATION.md](MIGRATION.md#from-09x-to-0100) for the upgrade guide.
 
 ### Removed
 
@@ -52,6 +55,17 @@ environment. There is no deprecation window and no compatibility shim.
 - `Documents.DeleteAsync` is documented as idempotent: the API answers `204`
   for an already-deleted document too.
 - **BREAKING**: The default code of `PoliPageGoneException` is `DOCUMENT_GONE`.
+- README, docs site and `samples/Demo` follow the environments contract:
+  the quick start renders `getting-started`/`welcome` with a `sandbox` key
+  and no version, the "Authentication & environments" section carries the
+  key table and the full-key regex, and previews and inline HTML point to
+  the playground (https://play.poli.page).
+- The demo asks for a `sandbox` key, checks a pasted key against the
+  full-key regex only, and ends with the `not-found` step (a render of a
+  template that does not exist, `404 TEMPLATE_NOT_FOUND`), printing the
+  error's code, status, message and request id.
+- The docs site's error-code table is generated from `PoliPageErrorCode`,
+  so it no longer lists retired codes.
 
 ### Added
 
@@ -65,6 +79,12 @@ environment. There is no deprecation window and no compatibility shim.
   `RenderTimeout`, and `InternalError`, which the API already returned.
 - `503 PUBLISH_IN_PROGRESS` (a render waiting on a publish) is retried like
   any other 5xx and honours `Retry-After`; no new option is needed.
+- Integration tests (`tests/PoliPage.IntegrationTests`, trait
+  `Category=Integration`) render `getting-started`/`welcome` with a
+  `sandbox` key, then get, preview and delete the stored document. The new
+  `Integration` workflow runs them nightly and on demand when the
+  `POLI_PAGE_API_KEY` secret is set, and logs a skip otherwise. The tests
+  skip on a key that is not `pp_sandbox_…`, and the workflow fails on one.
 
 ## [0.9.1] - 2026-06-22
 
@@ -79,7 +99,7 @@ environment. There is no deprecation window and no compatibility shim.
 
 First public release of the Poli Page .NET SDK. Targets `net8.0` and
 `net10.0`. Behaviour parity with `@poli-page/sdk@1.0` (see
-[MIGRATION.md](MIGRATION.md#10) for the parity checklist).
+[MIGRATION.md](MIGRATION.md#090) for the parity checklist).
 
 ### Added
 
@@ -145,5 +165,7 @@ First public release of the Poli Page .NET SDK. Targets `net8.0` and
 - Deterministic build, embedded symbols (PDBs inside the assembly), and
   Source Link via `Microsoft.SourceLink.GitHub`.
 
-[Unreleased]: https://github.com/poli-page/sdk-csharp/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/poli-page/sdk-csharp/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/poli-page/sdk-csharp/compare/v0.9.1...v0.10.0
+[0.9.1]: https://github.com/poli-page/sdk-csharp/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/poli-page/sdk-csharp/releases/tag/v0.9.0

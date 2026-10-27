@@ -5,7 +5,7 @@ description: How the Poli Page .NET SDK surfaces failures and how to handle each
 
 import ErrorTable from '@preset/components/ErrorTable.astro';
 
-Every failure thrown by the SDK is a `PoliPageException` or a subclass. Catch the subclass for targeted handling; catch the base type to handle every SDK error in one place.
+Every failure thrown by the SDK is a `PoliPageException` or a subclass. Catch the subclass for targeted handling; catch the base type to handle every SDK error in one place. A presigned PDF download that times out before the storage service answers is not wrapped: it surfaces as `TaskCanceledException`, not as a `PoliPageException` with code `timeout` (see [Cancellation](../cancellation/#download-timeouts)).
 
 ## The exception hierarchy
 
@@ -20,7 +20,7 @@ try
 }
 catch (PoliPageAuthException)          { await RefreshCredentialsAsync(); }
 catch (PoliPageRateLimitException ex)  { await QueueForLaterAsync(ex.RetryAfter); }
-catch (PoliPageNotFoundException)      { /* template / version / document missing */ }
+catch (PoliPageNotFoundException)      { /* project / template / document missing */ }
 catch (PoliPageValidationException ex) { /* malformed input — bad data */ }
 catch (PoliPageException ex)
 {
@@ -32,12 +32,11 @@ catch (PoliPageException ex)
 ## Subclasses
 
 <ErrorTable errors={[
-  { code: 'PoliPageAuthException',             when: 'HTTP 401 or 403 — API key missing, invalid, or lacking permission.', recovery: 'Rotate the key in the dashboard; verify the prefix matches the environment.' },
-  { code: 'PoliPageNotFoundException',         when: 'HTTP 404 — project, template, version, or document not found.', recovery: 'Verify the slugs and that the template is published in this environment.' },
-  { code: 'PoliPageGoneException',             when: 'HTTP 410 — resource permanently removed (e.g. soft-deleted document).', recovery: 'Not retryable. Treat as a hard failure.' },
+  { code: 'PoliPageAuthException',             when: 'HTTP 401 or 403 — API key missing, invalid, or lacking permission (e.g. ORGANIZATION_PAYMENT_GRACE, THUMBNAILS_NOT_AVAILABLE).', recovery: 'Check Code; rotate the key in the dashboard or fix the plan or payment.' },
+  { code: 'PoliPageNotFoundException',         when: 'HTTP 404 — project, template, or document not found (PROJECT_NOT_FOUND, PROJECT_NOT_IN_ENVIRONMENT, TEMPLATE_NOT_FOUND, DOCUMENT_NOT_FOUND).', recovery: "Verify the slugs and that the project is published in the API key's environment." },
+  { code: 'PoliPageGoneException',             when: 'HTTP 410 DOCUMENT_GONE — the document has been deleted.', recovery: 'Not retryable. Treat as a hard failure.' },
   { code: 'PoliPageValidationException',       when: 'HTTP 400 or 422 — request body failed server-side validation.', recovery: 'Inspect Message for the failing field; fix the input.' },
-  { code: 'PoliPageRateLimitException',        when: 'HTTP 429 — quota exhausted. Exposes RetryAfter.', recovery: 'Automatically retried up to MaxRetries. Honour RetryAfter.' },
-  { code: 'PoliPagePaymentRequiredException',  when: 'HTTP 402 — organisation has unpaid invoices.', recovery: 'Update the payment method in the dashboard.' },
+  { code: 'PoliPageRateLimitException',        when: 'HTTP 429 — RATE_LIMIT_EXCEEDED, QUOTA_EXCEEDED or OVERAGE_CAP_EXCEEDED. Exposes RetryAfter.', recovery: 'Automatically retried up to MaxRetries. Honour RetryAfter.' },
   { code: 'PoliPageNetworkException',          when: 'DNS / TCP / TLS failure or transport-level timeout. StatusCode = 0.', recovery: 'Automatically retried up to MaxRetries.' },
   { code: 'PoliPageDownloadException',         when: 'Presigned URL download from storage failed (commonly URL expiry).', recovery: 'Call Documents.GetAsync(id) to refresh the URL.' },
   { code: 'PoliPageException',                 when: 'Any other API failure, including per-request timeout (Code == Timeout).', recovery: 'Inspect Code and StatusCode to decide.' },
@@ -66,11 +65,10 @@ var client = new PoliPageClient(new PoliPageClientOptions
 
 try
 {
-    byte[] pdf = await client.Render.PdfAsync(new ProjectModeInput
+    byte[] pdf = await client.Render.PdfAsync(new RenderInput
     {
         Project  = "billing",
         Template = "invoice",
-        Version  = "1.0.0",
         Data     = new Dictionary<string, object>
         {
             { "invoiceNumber", "INV-001" },

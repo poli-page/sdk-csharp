@@ -1,9 +1,27 @@
 import type { PublicException } from './registry.js';
 import type { XmlDocMember } from './xml-docs.js';
 
+export interface ErrorCodeConstant {
+  readonly name: string;
+  readonly value: string;
+}
+
+// Reads the `public const string Name = "VALUE";` lines of PoliPageErrorCode.cs,
+// so the docs table cannot drift from the constants the SDK ships.
+export function readErrorCodes(source: string): ErrorCodeConstant[] {
+  const codes = [...source.matchAll(/public const string (\w+) = "([^"]+)";/g)].map(
+    (m) => ({ name: m[1]!, value: m[2]! }),
+  );
+  if (codes.length === 0) {
+    throw new Error('extractor: no constants found in PoliPageErrorCode.cs');
+  }
+  return codes;
+}
+
 export function buildErrorsPage(
   exceptions: readonly PublicException[],
   xml: ReadonlyMap<string, XmlDocMember>,
+  codes: readonly ErrorCodeConstant[],
 ): string {
   const rows = exceptions.map((e) => {
     const doc = xml.get(e.memberId);
@@ -14,6 +32,8 @@ export function buildErrorsPage(
     };
   });
 
+  const codeRows = codes.map((c) => `| \`${c.name}\` | \`${c.value}\` |`).join('\n');
+
   return `---
 title: Errors
 description: Every exception type thrown by the Poli Page .NET SDK, plus the wire-level codes.
@@ -21,7 +41,7 @@ description: Every exception type thrown by the Poli Page .NET SDK, plus the wir
 
 import ErrorTable from '@preset/components/ErrorTable.astro';
 
-Every failure thrown by the SDK is a \`PoliPageException\` or a subclass. The base type exposes \`Code\`, \`StatusCode\`, \`Message\`, and \`RequestId\`. Compare \`Code\` against the \`PoliPageErrorCode\` constants for fine-grained branching when the subclass is too coarse.
+Every failure thrown by the SDK is a \`PoliPageException\` or a subclass. A presigned PDF download that times out before the storage service answers is not wrapped: it surfaces as \`TaskCanceledException\`, not as a \`PoliPageException\` with code \`timeout\` (see [Cancellation](../../production/cancellation/#download-timeouts)). The base type exposes \`Code\`, \`StatusCode\`, \`Message\`, and \`RequestId\`. Compare \`Code\` against the \`PoliPageErrorCode\` constants for fine-grained branching when the subclass is too coarse.
 
 ## Exception hierarchy
 
@@ -29,7 +49,7 @@ Every failure thrown by the SDK is a \`PoliPageException\` or a subclass. The ba
 
 ## Wire-level codes
 
-These constants live on the static \`PoliPageErrorCode\` class. They are the exact strings returned by the API in the JSON error envelope's \`code\` field.
+These constants live on the static \`PoliPageErrorCode\` class. The API codes are the exact strings the API returns in its JSON error body (the \`error\` field); \`invalid_options\`, \`timeout\`, \`network_error\`, \`DOWNLOAD_FAILED\` and \`UNKNOWN\` are raised by the SDK itself. \`Code\` carries any other code the API returns, verbatim. The SDK never raises \`aborted\`: cancelling your own \`CancellationToken\` propagates as \`OperationCanceledException\`, not as a \`PoliPageException\`, so catch that instead (see [Cancellation](../../production/cancellation/)).
 
 \`\`\`csharp
 using PoliPage;
@@ -42,26 +62,6 @@ catch (PoliPageException ex) when (ex.Code == PoliPageErrorCode.QuotaExceeded)
 
 | Constant | Value |
 |---|---|
-| \`Unauthorized\` | \`UNAUTHORIZED\` |
-| \`Forbidden\` | \`FORBIDDEN\` |
-| \`NotFound\` | \`NOT_FOUND\` |
-| \`VersionNotFound\` | \`VERSION_NOT_FOUND\` |
-| \`DocumentNotFound\` | \`DOCUMENT_NOT_FOUND\` |
-| \`Gone\` | \`GONE\` |
-| \`Validation\` | \`VALIDATION\` |
-| \`RateLimit\` | \`RATE_LIMIT\` |
-| \`Timeout\` | \`TIMEOUT\` |
-| \`Network\` | \`NETWORK\` |
-| \`DownloadFailed\` | \`DOWNLOAD_FAILED\` |
-| \`PaymentRequired\` | \`PAYMENT_REQUIRED\` |
-| \`OrganizationCancelled\` | \`ORGANIZATION_CANCELLED\` |
-| \`OrganizationPurged\` | \`ORGANIZATION_PURGED\` |
-| \`QuotaExceeded\` | \`QUOTA_EXCEEDED\` |
-| \`OverageCapExceeded\` | \`OVERAGE_CAP_EXCEEDED\` |
-| \`InvalidVersionFormat\` | \`INVALID_VERSION_FORMAT\` |
-| \`VersionRequired\` | \`VERSION_REQUIRED\` |
-| \`InvalidVersionForKeyEnv\` | \`INVALID_VERSION_FOR_KEY_ENV\` |
-| \`StorageRequired\` | \`STORAGE_REQUIRED\` |
-| \`Unknown\` | \`UNKNOWN\` |
+${codeRows}
 `;
 }

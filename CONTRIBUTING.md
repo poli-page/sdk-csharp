@@ -28,41 +28,52 @@ or analyzer violation.
 
 ## Integration tests
 
-Integration tests hit the API. They are gated behind a category trait
-and the `POLI_PAGE_API_KEY` env var:
+Integration tests live in `tests/PoliPage.IntegrationTests` and hit the
+real API. Every test carries the `Category=Integration` trait and is
+skipped when `POLI_PAGE_API_KEY` is unset or empty, or is not a `sandbox`
+key: they never render into a counted environment. Use a `sandbox` key
+(`pp_sandbox_…`) of an organization whose `getting-started` project is
+untouched; `POLI_PAGE_BASE_URL` (optional) overrides the API host.
 
 ```bash
-export POLI_PAGE_API_KEY=pp_test_...
-dotnet test --filter "Category=Integration"
+export POLI_PAGE_API_KEY=pp_sandbox_x   # replace with your full key
+dotnet test tests/PoliPage.IntegrationTests --filter "Category=Integration"
 ```
 
-To skip integration tests on push (the default), simply run without the
-filter — the test runner excludes the `Integration` category unless
-selected.
+CI (`ci.yml`, `release.yml`) excludes them with
+`--filter "Category!=Integration"`. The `Integration` workflow runs them
+nightly and on `workflow_dispatch` with the `POLI_PAGE_API_KEY` (and
+optional `POLI_PAGE_BASE_URL`) repo secrets, logs a skip when the key
+secret is not set, and fails when it is set but is not a full `pp_sandbox_`
+key.
 
 ## Releasing
 
-Releases are **manual**. There is no CI workflow that auto-publishes —
-by design. Pushing a tag does not publish; pushing a build artifact
-does.
+Nothing publishes without a maintainer's approval. Pushing a `vX.Y.Z`
+tag runs `.github/workflows/release.yml`: its `build` job checks that the
+tag matches `<Version>`, runs format, build, unit tests and pack; its
+`publish` job then waits for approval on the `nuget-release`
+environment, and only on approval pushes to nuget.org (Trusted
+Publishing / OIDC) and creates the GitHub Release from the version's
+`CHANGELOG.md` section.
 
 1. Bump `<Version>` in `Directory.Build.props`.
 2. Move `[Unreleased]` to `[X.Y.Z] - YYYY-MM-DD` in `CHANGELOG.md`.
-3. If a MAJOR bump, add a section to `MIGRATION.md`.
-4. Commit `chore(release): vX.Y.Z` on `main`.
+3. If the release breaks the public surface (a minor bump while on 0.x,
+   a major bump from 1.0 on), add a section to `MIGRATION.md`.
+4. Merge the release commit to `main`.
 5. Run the pre-flight verification locally:
    ```bash
    dotnet format --verify-no-changes
    dotnet build --configuration Release --no-restore -warnaserror
-   dotnet test --configuration Release --no-build
+   dotnet test --configuration Release --no-build --filter "Category!=Integration"
    dotnet pack  --configuration Release --no-build --output ./nupkg
    ```
 6. Inspect the `.nupkg` contents (`unzip -l ./nupkg/PoliPage.X.Y.Z.nupkg`).
-7. Tag locally: `git tag vX.Y.Z`.
-8. Push the tag when ready: `git push origin vX.Y.Z`.
-9. Push the package: `dotnet nuget push ./nupkg/PoliPage.X.Y.Z.nupkg --source https://api.nuget.org/v3/index.json --api-key $NUGET_API_KEY`.
-10. Optionally create a GitHub Release from the tag for the changelog
-    excerpt — `gh release create vX.Y.Z --notes-from-tag`.
+7. Tag the release commit on `main` and push the tag:
+   `git tag vX.Y.Z && git push origin vX.Y.Z`.
+8. Approve the `publish` job in the Actions run (environment
+   `nuget-release`). It pushes to nuget.org and creates the GitHub Release.
 
 ### Stable vs. prerelease channels
 
@@ -75,8 +86,8 @@ without `--prerelease` ignores them; users opt in explicitly.
 1. Bump `<Version>` to e.g. `2.0.0-rc.1`.
 2. Move `[Unreleased]` → `[2.0.0-rc.1] - YYYY-MM-DD` in `CHANGELOG.md`.
 3. Commit `chore(release): v2.0.0-rc.1`.
-4. Run the pre-flight verification, pack, and push the `.nupkg` as
-   above. NuGet routes the prerelease automatically.
+4. Tag and approve as above. NuGet routes the prerelease
+   automatically, and the GitHub Release is marked as a prerelease.
 
 Users opt in:
 
@@ -93,7 +104,7 @@ minus the suffix:
 1. Bump `<Version>` to `2.0.0` (drop the suffix).
 2. Move the prerelease entries in `CHANGELOG.md` under
    `[2.0.0] - YYYY-MM-DD`.
-3. Commit, tag, pack, and push.
+3. Commit, tag, and approve the publish as above.
 
 Stable and prerelease versions must never share a build identifier —
 once a prerelease is promoted, the next prerelease starts a new

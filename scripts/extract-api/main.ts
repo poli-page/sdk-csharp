@@ -18,7 +18,7 @@ import {
 import { buildClientPage } from './client-page.js';
 import { buildMethodPages } from './method-pages.js';
 import { buildTypesPage } from './types-page.js';
-import { buildErrorsPage } from './errors-page.js';
+import { buildErrorsPage, readErrorCodes } from './errors-page.js';
 import { buildRuntimeSupportPage } from './runtime-support-page.js';
 import { buildMetaSidecar } from './meta-sidecar.js';
 
@@ -97,7 +97,13 @@ function run(): void {
   );
   writeFileSync(
     join(REFERENCE_OUT, 'errors.mdx'),
-    buildErrorsPage(PUBLIC_EXCEPTIONS, xmlIndex),
+    buildErrorsPage(
+      PUBLIC_EXCEPTIONS,
+      xmlIndex,
+      readErrorCodes(
+        readFileSync(resolve(REPO_ROOT, 'src', 'PoliPage', 'PoliPageErrorCode.cs'), 'utf8'),
+      ),
+    ),
     'utf8',
   );
   writeFileSync(

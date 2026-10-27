@@ -3,9 +3,22 @@
 // Run:  dotnet run --project samples/Demo
 //
 // Walks every public method of the SDK and writes the results to
-// `samples/Demo/output/`. Uses the `getting-started/welcome` project
-// template that's auto-provisioned in every Poli Page org, so this works out
-// of the box with any fresh API key — no project setup needed.
+// `samples/Demo/output/`. Renders `getting-started/welcome`: every
+// organization gets a `getting-started` project, published into its `sandbox`
+// environment when the organization is created, so a sandbox key
+// (`pp_sandbox_…`) of a fresh organization renders it with no setup. In an
+// organization that renamed, deleted or unpublished that project, the API
+// answers 404 PROJECT_NOT_FOUND or PROJECT_NOT_IN_ENVIRONMENT.
+//
+// Reads POLI_PAGE_API_KEY (and the optional POLI_PAGE_BASE_URL) from the
+// shell, then from `<repo>/.env`; with neither, it prompts for a sandbox key.
+//
+// Steps:
+//   1. Render.PdfAsync            6. Documents.ThumbnailsAsync (Starter+ tier)
+//   2. Render.PdfStreamAsync      7. Documents.PreviewAsync
+//   3. RenderToFileAsync          8. Documents.DeleteAsync
+//   4. Render.DocumentAsync       9. not-found (404 TEMPLATE_NOT_FOUND, caught)
+//   5. Documents.GetAsync
 //
 // Open the generated files to confirm everything works:
 //
@@ -15,8 +28,9 @@
 //   - samples/Demo/output/documents_preview.html  (Documents.PreviewAsync, after storing)
 //   - samples/Demo/output/thumbs/page_<n>.png     (Documents.ThumbnailsAsync, Starter+ tier)
 //
-// Step 9 deliberately triggers a 404 to exercise the error-handling story —
-// the demo catches PoliPageException and prints the exposed fields. The
+// Step 9 (not-found) renders a template that does not exist on purpose: the
+// API answers 404 TEMPLATE_NOT_FOUND, and the demo catches the
+// PoliPageException and prints its code, status, message and request id. The
 // script does NOT crash there.
 
 using System.Text;
@@ -36,10 +50,9 @@ Directory.CreateDirectory(outDir);
 var apiKey = EnvFile.EnsureApiKey(repoRoot);
 var baseUrl = EnvFile.ResolveBaseUrl(repoRoot);
 
-// Every render call uses project mode — required by PdfAsync / PdfStreamAsync /
-// RenderToFileAsync / DocumentAsync. `getting-started/welcome` is auto-provisioned
-// in every org, so this works out of the box for any newcomer with a fresh API key.
-var projectInput = new RenderInput
+// The render input names a project and a template; there is no version to pick.
+// The API renders the project's copy published in the API key's environment.
+var welcomeInput = new RenderInput
 {
     Project = "getting-started",
     Template = "welcome",
@@ -69,7 +82,7 @@ const int totalSteps = 9;
 //    an HTTP handler, attach to an email, hash for a signature).
 // ─────────────────────────────────────────────────────────────────────────────
 Ansi.Step(1, totalSteps, "Render.PdfAsync() — PDF bytes in memory");
-var pdf = await client.Render.PdfAsync(projectInput);
+var pdf = await client.Render.PdfAsync(welcomeInput);
 var renderPath = Path.Combine(outDir, "render.pdf");
 await File.WriteAllBytesAsync(renderPath, pdf);
 var magic = Encoding.ASCII.GetString(pdf, 0, Math.Min(4, pdf.Length));
@@ -84,7 +97,7 @@ Console.WriteLine($"  {Ansi.Dim("open:")} {Ansi.FileLink(renderPath)}");
 Ansi.Step(2, totalSteps, "Render.PdfStreamAsync() — Stream of PDF bytes");
 var streamPath = Path.Combine(outDir, "stream.pdf");
 long streamBytes;
-await using (var pdfStream = await client.Render.PdfStreamAsync(projectInput))
+await using (var pdfStream = await client.Render.PdfStreamAsync(welcomeInput))
 await using (var fileStream = File.Create(streamPath))
 {
     await pdfStream.CopyToAsync(fileStream);
@@ -100,7 +113,7 @@ Console.WriteLine($"  {Ansi.Dim("open:")} {Ansi.FileLink(streamPath)}");
 // ─────────────────────────────────────────────────────────────────────────────
 Ansi.Step(3, totalSteps, "RenderToFileAsync() — render straight to disk");
 var filePath = Path.Combine(outDir, "file.pdf");
-await client.RenderToFileAsync(projectInput, filePath);
+await client.RenderToFileAsync(welcomeInput, filePath);
 Console.WriteLine($"  wrote {filePath}");
 Console.WriteLine($"  {Ansi.Dim("open:")} {Ansi.FileLink(filePath)}");
 
@@ -111,7 +124,7 @@ Console.WriteLine($"  {Ansi.Dim("open:")} {Ansi.FileLink(filePath)}");
 //    Returns a DocumentDescriptor — persist `DocumentId` in your DB.
 // ─────────────────────────────────────────────────────────────────────────────
 Ansi.Step(4, totalSteps, "Render.DocumentAsync() — store the document, return the descriptor");
-var doc = await client.Render.DocumentAsync(projectInput);
+var doc = await client.Render.DocumentAsync(welcomeInput);
 Console.WriteLine($"  {Ansi.Dim("documentId:")} {Ansi.Bold(doc.DocumentId)}");
 Console.WriteLine($"  {Ansi.Dim("pageCount:")} {doc.PageCount}  {Ansi.Dim("sizeBytes:")} {doc.SizeBytes}");
 
@@ -179,20 +192,28 @@ await client.Documents.DeleteAsync(doc.DocumentId);
 Console.WriteLine($"  {Ansi.Green("✔")} deleted {doc.DocumentId}");
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 9. Error handling — DELIBERATELY trigger a failure, then catch it.
-//    Every failure — API errors, network failures, timeouts, caller aborts —
-//    surfaces as `PoliPageException` (or a more specific subclass:
-//    PoliPageAuthException, PoliPageRateLimitException, etc.). Inspect `Code`,
-//    `StatusCode`, `RequestId`, or pattern-match on the subclass.
+// 9. not-found — DELIBERATELY render a template that does not exist, then
+//    catch the error. API errors, network failures and API timeouts surface as
+//    `PoliPageException` (or a more specific subclass: PoliPageNotFoundException,
+//    PoliPageAuthException, etc.). Inspect `Code`, `StatusCode`, `Message`,
+//    `RequestId`, or pattern-match on the subclass. Cancelling your own
+//    `CancellationToken` is not an SDK error: it propagates as
+//    `OperationCanceledException`, never as `PoliPageException`.
+//    One exception: the presigned PDF download that follows the API call is
+//    bounded by `DownloadHttpClient.Timeout` (100 s by default), not by
+//    `RequestTimeout`. If it times out before the response headers arrive, it
+//    throws `TaskCanceledException` (InnerException: `TimeoutException`) even
+//    though you did not cancel, so `catch (PoliPageException)` does not catch it.
 // ─────────────────────────────────────────────────────────────────────────────
-Ansi.Step(9, totalSteps, "error handling — DEMO ONLY (we trigger an error on purpose)");
+Ansi.Step(9, totalSteps, "not-found — DEMO ONLY (we trigger an error on purpose)");
 Console.WriteLine(Ansi.Yellow("  ⚠  This step is intentional — the SDK is about to throw, but the"));
 Console.WriteLine(Ansi.Yellow("     demo will catch and inspect it. ") + Ansi.Bold("The demo is NOT crashing."));
 Console.WriteLine(Ansi.Dim("     (We render a template that does not exist, expecting the API to return 404 TEMPLATE_NOT_FOUND.)"));
 Console.WriteLine();
 try
 {
-    // Intentionally invalid: template 'does-not-exist' triggers TEMPLATE_NOT_FOUND (404).
+    // Intentionally invalid: template 'does-not-exist' gets 404 TEMPLATE_NOT_FOUND.
+    // `new { }` goes on the wire as `"data": {}`.
     await client.Render.PdfAsync(new RenderInput
     {
         Project = "getting-started",
@@ -206,11 +227,10 @@ catch (PoliPageException ex)
     Console.WriteLine($"  {Ansi.Green("✔")} Error caught successfully. PoliPageException exposed:");
     Console.WriteLine($"      Code:           {ex.Code}");
     Console.WriteLine($"      StatusCode:     {ex.StatusCode}");
+    Console.WriteLine($"      Message:        {ex.Message}");
     Console.WriteLine($"      RequestId:      {ex.RequestId ?? "(none)"}");
     Console.WriteLine($"      Type:           {ex.GetType().Name}");
-    Console.WriteLine($"      IsAuthError:    {ex is PoliPageAuthException}");
-    Console.WriteLine($"      IsRateLimit:    {ex is PoliPageRateLimitException}");
-    Console.WriteLine($"      IsValidation:   {ex is PoliPageValidationException}");
+    Console.WriteLine($"      IsNotFound:     {ex is PoliPageNotFoundException}");
 }
 
 Console.WriteLine();

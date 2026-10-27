@@ -13,11 +13,10 @@ using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 try
 {
     byte[] pdf = await client.Render.PdfAsync(
-        new ProjectModeInput
+        new RenderInput
         {
             Project  = "billing",
             Template = "invoice",
-            Version  = "1.0.0",
             Data     = new Dictionary<string, object> { { "invoiceNumber", "INV-001" } },
         },
         cancellationToken: cts.Token);
@@ -34,6 +33,31 @@ catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
 
 When the per-request timeout fires, the SDK throws `PoliPageException` with `Code == PoliPageErrorCode.Timeout` (so it can be retried per the [retry policy](../retries-and-idempotency/)). When the caller cancels, the SDK lets `OperationCanceledException` propagate — caller-aborted operations are never retried.
 
+## Download timeouts
+
+`RequestTimeout` bounds the API calls only. `Render.PdfAsync`, `Render.PdfStreamAsync`, `RenderToFileAsync` and `DocumentDescriptor.DownloadPdfAsync` then fetch the PDF from its presigned URL on a separate download client (`PoliPageClientOptions.DownloadHttpClient`), which is bounded by that client's `HttpClient.Timeout`: 100 seconds for the client the SDK creates when you pass none.
+
+When that timeout fires before the storage service sends its response headers, the SDK does not map it to `PoliPageErrorCode.Timeout`: it throws `TaskCanceledException` (with a `TimeoutException` as `InnerException`) even though your token was not cancelled, and does not retry. `catch (PoliPageException)` does not catch it. Tell it apart from your own cancellation by checking your token:
+
+```csharp
+try
+{
+    byte[] pdf = await client.Render.PdfAsync(input, cancellationToken: cts.Token);
+}
+catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+{
+    // Caller cancellation — never retried.
+}
+catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+{
+    // The presigned PDF download timed out; the SDK did not retry it.
+}
+catch (PoliPageException ex) when (ex.Code == PoliPageErrorCode.Timeout)
+{
+    // An API call timed out after its retries.
+}
+```
+
 ## Example
 
 ```csharp
@@ -49,11 +73,10 @@ using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 try
 {
     byte[] pdf = await client.Render.PdfAsync(
-        new ProjectModeInput
+        new RenderInput
         {
             Project  = "billing",
             Template = "invoice",
-            Version  = "1.0.0",
             Data     = new Dictionary<string, object>
             {
                 { "invoiceNumber", "INV-001" },

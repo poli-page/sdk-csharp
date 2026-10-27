@@ -33,11 +33,10 @@ If you orchestrate your own retries on top of the SDK, supply a deterministic ke
 
 ```csharp
 byte[] pdf = await client.Render.PdfAsync(
-    new ProjectModeInput
+    new RenderInput
     {
         Project  = "billing",
         Template = "invoice",
-        Version  = "1.0.0",
         Data     = new Dictionary<string, object> { { "invoiceNumber", "INV-001" } },
     },
     new RequestOptions { IdempotencyKey = "invoice-INV-001-v1" });
@@ -58,11 +57,10 @@ var client = new PoliPageClient(new PoliPageClientOptions
     OnRetry    = evt => Console.WriteLine($"retry #{evt.Attempt} in {evt.Delay}: {evt.Reason}"),
 });
 
-byte[] pdf = await client.Render.PdfAsync(new ProjectModeInput
+byte[] pdf = await client.Render.PdfAsync(new RenderInput
 {
     Project  = "billing",
     Template = "invoice",
-    Version  = "1.0.0",
     Data     = new Dictionary<string, object> { { "invoiceNumber", "INV-001" } },
 });
 ```

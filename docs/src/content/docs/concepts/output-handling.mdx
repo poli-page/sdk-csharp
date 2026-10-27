@@ -8,11 +8,10 @@ The SDK gives you four ways to handle a rendered PDF: in-memory `byte[]`, a `Str
 ## In-memory (`Render.PdfAsync`)
 
 ```csharp
-byte[] pdf = await client.Render.PdfAsync(new ProjectModeInput
+byte[] pdf = await client.Render.PdfAsync(new RenderInput
 {
     Project  = "billing",
     Template = "invoice",
-    Version  = "1.0.0",
     Data     = new Dictionary<string, object> { { "invoiceNumber", "INV-001" } },
 });
 // `pdf` is a byte[] — write, upload, return as-is.
@@ -25,11 +24,10 @@ Best for documents that fit comfortably in process memory.
 For large PDFs or piping straight to an HTTP response or object store, use `PdfStreamAsync` and keep memory bounded. The returned `Stream` is the underlying HTTP response body — dispose it when you're done.
 
 ```csharp
-await using Stream stream = await client.Render.PdfStreamAsync(new ProjectModeInput
+await using Stream stream = await client.Render.PdfStreamAsync(new RenderInput
 {
     Project  = "billing",
     Template = "invoice",
-    Version  = "1.0.0",
     Data     = new Dictionary<string, object> { { "invoiceNumber", "INV-001" } },
 });
 
@@ -38,15 +36,16 @@ await stream.CopyToAsync(Response.Body);
 
 ## Write to file (`PoliPageClient.RenderToFileAsync`)
 
-The client exposes a helper that streams bytes directly to disk with bounded memory. Parent directories are created automatically.
+The client exposes a helper that streams bytes directly to disk with bounded memory. It does not create parent directories: create the target directory first, or the write throws `DirectoryNotFoundException`.
 
 ```csharp
+Directory.CreateDirectory("./invoices");
+
 await client.RenderToFileAsync(
-    new ProjectModeInput
+    new RenderInput
     {
         Project  = "billing",
         Template = "invoice",
-        Version  = "1.0.0",
         Data     = new Dictionary<string, object> { { "invoiceNumber", "INV-001" } },
     },
     "./invoices/INV-001.pdf");
@@ -57,11 +56,10 @@ await client.RenderToFileAsync(
 When you want the PDF to live on Poli Page's servers (for later download, preview, or thumbnails), use `Render.DocumentAsync`. It returns a `DocumentDescriptor` with `DocumentId`, `PresignedPdfUrl`, and a `DownloadPdfAsync` method.
 
 ```csharp
-DocumentDescriptor doc = await client.Render.DocumentAsync(new ProjectModeInput
+DocumentDescriptor doc = await client.Render.DocumentAsync(new RenderInput
 {
     Project  = "billing",
     Template = "invoice",
-    Version  = "1.0.0",
     Data     = new Dictionary<string, object> { { "invoiceNumber", "INV-001" } },
 });
 
@@ -80,12 +78,13 @@ var client = new PoliPageClient(new PoliPageClientOptions
     ApiKey = Environment.GetEnvironmentVariable("POLI_PAGE_API_KEY")!,
 });
 
+Directory.CreateDirectory("./invoices");
+
 await client.RenderToFileAsync(
-    new ProjectModeInput
+    new RenderInput
     {
         Project  = "billing",
         Template = "invoice",
-        Version  = "1.0.0",
         Data     = new Dictionary<string, object>
         {
             { "invoiceNumber", "INV-001" },

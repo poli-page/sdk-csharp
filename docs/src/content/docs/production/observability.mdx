@@ -56,11 +56,10 @@ var client = new PoliPageClient(new PoliPageClientOptions
     OnError = ex  => Console.Error.WriteLine($"terminal failure: {ex.Message}"),
 });
 
-byte[] pdf = await client.Render.PdfAsync(new ProjectModeInput
+byte[] pdf = await client.Render.PdfAsync(new RenderInput
 {
     Project  = "billing",
     Template = "invoice",
-    Version  = "1.0.0",
     Data     = new Dictionary<string, object> { { "invoiceNumber", "INV-001" } },
 });
 ```
