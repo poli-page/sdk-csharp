@@ -248,7 +248,9 @@ using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 var pdf = await client.Render.PdfAsync(input, cancellationToken: cts.Token);
 ```
 
-When the token is canceled, the SDK throws `OperationCanceledException` (or `TaskCanceledException`); when the per-request timeout expires, it throws `PoliPageException` with `Code == PoliPageErrorCode.Timeout`. Caller-aborted operations are never retried.
+When the token is canceled, the SDK throws `OperationCanceledException` (or `TaskCanceledException`); when the per-request timeout of an API call expires, it throws `PoliPageException` with `Code == PoliPageErrorCode.Timeout`. Caller-aborted operations are never retried.
+
+The presigned PDF download that `Render.PdfAsync`, `Render.PdfStreamAsync`, `RenderToFileAsync` and `DocumentDescriptor.DownloadPdfAsync` run after the API call is not bounded by `RequestTimeout` but by `DownloadHttpClient.Timeout` (100 seconds by default). If it expires before the storage service answers, the SDK throws `TaskCanceledException` (with a `TimeoutException` as `InnerException`), not `PoliPageException`, even though you did not cancel.
 
 The default per-request timeout is 60 seconds, configurable via `PoliPageClientOptions.RequestTimeout` or per call via `RequestOptions.RequestTimeout`.
 

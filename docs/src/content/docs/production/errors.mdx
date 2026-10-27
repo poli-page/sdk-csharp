@@ -5,7 +5,7 @@ description: How the Poli Page .NET SDK surfaces failures and how to handle each
 
 import ErrorTable from '@preset/components/ErrorTable.astro';
 
-Every failure thrown by the SDK is a `PoliPageException` or a subclass. Catch the subclass for targeted handling; catch the base type to handle every SDK error in one place.
+Every failure thrown by the SDK is a `PoliPageException` or a subclass. Catch the subclass for targeted handling; catch the base type to handle every SDK error in one place. A presigned PDF download that times out before the storage service answers is not wrapped: it surfaces as `TaskCanceledException`, not as a `PoliPageException` with code `timeout` (see [Cancellation](../cancellation/#download-timeouts)).
 
 ## The exception hierarchy
 

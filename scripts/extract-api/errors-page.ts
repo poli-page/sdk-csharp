@@ -41,7 +41,7 @@ description: Every exception type thrown by the Poli Page .NET SDK, plus the wir
 
 import ErrorTable from '@preset/components/ErrorTable.astro';
 
-Every failure thrown by the SDK is a \`PoliPageException\` or a subclass. The base type exposes \`Code\`, \`StatusCode\`, \`Message\`, and \`RequestId\`. Compare \`Code\` against the \`PoliPageErrorCode\` constants for fine-grained branching when the subclass is too coarse.
+Every failure thrown by the SDK is a \`PoliPageException\` or a subclass. A presigned PDF download that times out before the storage service answers is not wrapped: it surfaces as \`TaskCanceledException\`, not as a \`PoliPageException\` with code \`timeout\` (see [Cancellation](../../production/cancellation/#download-timeouts)). The base type exposes \`Code\`, \`StatusCode\`, \`Message\`, and \`RequestId\`. Compare \`Code\` against the \`PoliPageErrorCode\` constants for fine-grained branching when the subclass is too coarse.
 
 ## Exception hierarchy
 
