@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.10.0] - 2026-10-26
+## [0.10.0] - 2026-10-27
 
 Breaking: implements the environments contract. A key carries its
 environment (`pp_{env}_…`, e.g. `pp_sandbox_…`, `pp_live_…`,
