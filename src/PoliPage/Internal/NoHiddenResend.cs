@@ -24,9 +24,21 @@ namespace PoliPage.Internal;
 /// request, and a request cannot opt out of a client default. Such a resend only happens
 /// before any byte of the body left the client, so the API cannot have stored a render.
 /// </para>
+/// <para>
+/// Over HTTP/2 the handler also resends, whatever the content, a request the server refused
+/// (<c>RST_STREAM REFUSED_STREAM</c>) or left unprocessed (<c>GOAWAY</c> below its stream
+/// id). Nothing at the request level turns that off, so every SDK request is pinned to
+/// HTTP/1.1 (<see cref="HttpVersionPolicy.RequestVersionOrLower"/>: never upgraded to
+/// HTTP/2 or HTTP/3), even when an injected HttpClient's <c>DefaultRequestVersion</c> asks
+/// for more.
+/// </para>
 /// </remarks>
 internal static class NoHiddenResend
 {
     internal static void Apply(HttpRequestMessage request)
-        => request.Content ??= new ByteArrayContent([]);
+    {
+        request.Version = System.Net.HttpVersion.Version11;
+        request.VersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+        request.Content ??= new ByteArrayContent([]);
+    }
 }

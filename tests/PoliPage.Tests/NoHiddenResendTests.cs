@@ -94,10 +94,41 @@ public sealed class NoHiddenResendTests
         AssertSentOnceOnTheReusedConnection(server);
     }
 
+    [Fact]
+    public async Task Every_request_stays_on_HTTP_1_1_even_through_a_client_asking_for_HTTP_2()
+    {
+        // Over HTTP/2, SocketsHttpHandler resends a refused (REFUSED_STREAM) or unprocessed
+        // (GOAWAY) request by itself, whatever its content: the SDK never asks for HTTP/2.
+        await using var server = new MockServer(origin => [Descriptor(origin), Bytes(200, Pdf, "application/pdf")]);
+        var seen = new List<(Version Version, HttpVersionPolicy Policy)>();
+        using var http = new HttpClient(new CapturingHandler(seen, new SocketsHttpHandler()))
+        {
+            DefaultRequestVersion = System.Net.HttpVersion.Version20,
+            DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher,
+        };
+        using var client = new PoliPageClient(Options(server) with { HttpClient = http, DownloadHttpClient = http });
+
+        await client.Render.PdfAsync(Input);
+
+        seen.Should().HaveCount(2).And.OnlyContain(
+            s => s.Version == System.Net.HttpVersion.Version11 && s.Policy == HttpVersionPolicy.RequestVersionOrLower);
+    }
+
     private static void AssertSentOnceOnTheReusedConnection(MockServer server)
     {
         var requests = server.Requests;
         requests.Should().HaveCount(2, "the dropped request must not be sent again behind the SDK's back");
         requests[1].Connection.Should().Be(requests[0].Connection, "the control: the second request reused the connection");
+    }
+
+    private sealed class CapturingHandler(List<(Version Version, HttpVersionPolicy Policy)> seen, HttpMessageHandler inner)
+        : DelegatingHandler(inner)
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            lock (seen)
+                seen.Add((request.Version, request.VersionPolicy));
+            return base.SendAsync(request, cancellationToken);
+        }
     }
 }
