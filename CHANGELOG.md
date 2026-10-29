@@ -43,7 +43,8 @@ the upgrade guide.
   (an empty id reaches no route: `404 NOT_FOUND`), instead of throwing
   `ArgumentException`. A `null` id still throws `ArgumentNullException`.
 - **BREAKING**: a timeout of the presigned-URL download (the
-  `DownloadHttpClient`'s `Timeout`) throws `PoliPageDownloadException`
+  `DownloadHttpClient`'s `Timeout`, which bounds the wait for the storage's
+  response headers; the PDF body read has no SDK time bound) throws `PoliPageDownloadException`
   (`DOWNLOAD_FAILED`, `Failed to download PDF: network error`, no status, the
   `TaskCanceledException` as `InnerException`) instead of a raw
   `TaskCanceledException`. Every download failure is now `DOWNLOAD_FAILED`.

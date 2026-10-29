@@ -49,7 +49,8 @@ the retry number.
 
 ### Download failures are all `DOWNLOAD_FAILED`
 
-A timeout of the presigned download (`DownloadHttpClient.Timeout`) throws
+A timeout of the presigned download (`DownloadHttpClient.Timeout`, which bounds
+the wait for the storage's response headers) throws
 `PoliPageDownloadException` (`DOWNLOAD_FAILED`, no status) instead of
 `TaskCanceledException`; a `catch (TaskCanceledException ex) when
 (ex.InnerException is TimeoutException)` around a render or a download no

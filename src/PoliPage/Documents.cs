@@ -42,7 +42,11 @@ public sealed class Documents
     /// <exception cref="PoliPageNotFoundException">The document does not exist.</exception>
     /// <exception cref="PoliPageGoneException">The document was soft-deleted.</exception>
     /// <exception cref="PoliPageException">Any other API failure.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    /// <exception cref="PoliPageException">
+    /// With <c>Code == PoliPageErrorCode.Aborted</c> when <paramref name="cancellationToken"/> was
+    /// cancelled; the original <see cref="OperationCanceledException"/> is the
+    /// <see cref="Exception.InnerException"/>.
+    /// </exception>
     public async Task<DocumentDescriptor> GetAsync(
         string documentId,
         RequestOptions? options = null,
@@ -84,7 +88,11 @@ public sealed class Documents
     /// <exception cref="ArgumentNullException"><paramref name="documentId"/> is <see langword="null"/>.</exception>
     /// <exception cref="PoliPageNotFoundException">The document does not exist.</exception>
     /// <exception cref="PoliPageException">Any other API failure.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    /// <exception cref="PoliPageException">
+    /// With <c>Code == PoliPageErrorCode.Aborted</c> when <paramref name="cancellationToken"/> was
+    /// cancelled; the original <see cref="OperationCanceledException"/> is the
+    /// <see cref="Exception.InnerException"/>.
+    /// </exception>
     public async Task DeleteAsync(
         string documentId,
         RequestOptions? options = null,
@@ -113,7 +121,11 @@ public sealed class Documents
     /// <exception cref="PoliPageNotFoundException">The document does not exist.</exception>
     /// <exception cref="PoliPageGoneException">The document was soft-deleted.</exception>
     /// <exception cref="PoliPageException">Any other API failure.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    /// <exception cref="PoliPageException">
+    /// With <c>Code == PoliPageErrorCode.Aborted</c> when <paramref name="cancellationToken"/> was
+    /// cancelled; the original <see cref="OperationCanceledException"/> is the
+    /// <see cref="Exception.InnerException"/>.
+    /// </exception>
     public async Task<DocumentPreviewResult> PreviewAsync(
         string documentId,
         RequestOptions? options = null,
@@ -155,7 +167,11 @@ public sealed class Documents
     /// <exception cref="ArgumentNullException"><paramref name="documentId"/> is <see langword="null"/>.</exception>
     /// <exception cref="PoliPageNotFoundException">The document does not exist.</exception>
     /// <exception cref="PoliPageException">Any other API failure.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    /// <exception cref="PoliPageException">
+    /// With <c>Code == PoliPageErrorCode.Aborted</c> when <paramref name="cancellationToken"/> was
+    /// cancelled; the original <see cref="OperationCanceledException"/> is the
+    /// <see cref="Exception.InnerException"/>.
+    /// </exception>
     public async Task<IReadOnlyList<Thumbnail>> ThumbnailsAsync(
         string documentId,
         ThumbnailOptions? thumbnailOptions = null,

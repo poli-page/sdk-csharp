@@ -198,8 +198,9 @@ Console.WriteLine($"  {Ansi.Green("✔")} deleted {doc.DocumentId}");
 //    PoliPageAuthException, etc.). Inspect `Code`, `StatusCode`, `Message`,
 //    `RequestId`, or pattern-match on the subclass. Cancelling your own
 //    `CancellationToken` throws `PoliPageException` with code `aborted`, and a
-//    failed presigned PDF download (bounded by `DownloadHttpClient.Timeout`,
-//    100 s by default) a `PoliPageDownloadException` (`DOWNLOAD_FAILED`): every
+//    failed presigned PDF download (its wait for the storage's headers is bounded
+//    by `DownloadHttpClient.Timeout`, 100 s by default) a
+//    `PoliPageDownloadException` (`DOWNLOAD_FAILED`): every
 //    SDK failure is a `PoliPageException`.
 // ─────────────────────────────────────────────────────────────────────────────
 Ansi.Step(9, totalSteps, "not-found — DEMO ONLY (we trigger an error on purpose)");

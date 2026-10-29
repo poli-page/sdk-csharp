@@ -92,8 +92,15 @@ public sealed record DocumentDescriptor
     /// This descriptor was constructed manually and was never handed back by a
     /// <see cref="PoliPageClient"/> — no downloader is wired.
     /// </exception>
-    /// <exception cref="PoliPageDownloadException">The presigned URL fetch returned a non-2xx status.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    /// <exception cref="PoliPageDownloadException">
+    /// The presigned URL fetch failed (<c>DOWNLOAD_FAILED</c>): a non-2xx storage status, or no
+    /// status for a network failure or the download client's timeout before the headers.
+    /// </exception>
+    /// <exception cref="PoliPageException">
+    /// With <c>Code == PoliPageErrorCode.Aborted</c> when <paramref name="cancellationToken"/> was
+    /// cancelled; the original <see cref="OperationCanceledException"/> is the
+    /// <see cref="Exception.InnerException"/>.
+    /// </exception>
     public Task<byte[]> DownloadPdfAsync(CancellationToken cancellationToken = default)
     {
         if (Downloader is null)

@@ -37,9 +37,11 @@ When an attempt times out, the SDK records a `timeout` (`Request timed out after
 
 ## Download timeouts
 
-`RequestTimeout` bounds the API calls only. `Render.PdfAsync`, `Render.PdfStreamAsync`, `RenderToFileAsync` and `DocumentDescriptor.DownloadPdfAsync` then fetch the PDF from its presigned URL on a separate download client (`PoliPageClientOptions.DownloadHttpClient`), which is bounded by that client's `HttpClient.Timeout`: 100 seconds for the client the SDK creates when you pass none.
+`RequestTimeout` bounds the API calls only. `Render.PdfAsync`, `Render.PdfStreamAsync`, `RenderToFileAsync` and `DocumentDescriptor.DownloadPdfAsync` then fetch the PDF from its presigned URL on a separate download client (`PoliPageClientOptions.DownloadHttpClient`). That client's `HttpClient.Timeout` (100 seconds for the client the SDK creates when you pass none) bounds only the wait for the storage's response headers.
 
 When that timeout fires, the SDK throws `PoliPageDownloadException` with `Code == PoliPageErrorCode.DownloadFailed` and the message `Failed to download PDF: network error` (no status, the `TaskCanceledException` as `InnerException`). The download is never retried.
+
+Once the headers have arrived, reading the PDF body has no SDK time bound: a storage answer that stalls mid-body waits until your `CancellationToken` fires. Pass one (for example a `CancellationTokenSource` with a timeout) to bound the whole download.
 
 ```csharp
 try
@@ -57,6 +59,28 @@ catch (PoliPageDownloadException ex)
 catch (PoliPageException ex) when (ex.Code == PoliPageErrorCode.Timeout)
 {
     // An API call timed out after its retries.
+}
+```
+
+## What `aborted` changes for .NET code
+
+Because a cancellation surfaces as a `PoliPageException`, not as an `OperationCanceledException`:
+
+- A cancelled SDK task ends **Faulted**, not **Canceled**: `task.IsCanceled` is `false`, and code that relies on cancellation semantics (`Task.WhenAll`, `Parallel.ForEachAsync`, `catch (OperationCanceledException)`) sees an ordinary failure.
+- ASP.NET Core's exception handler treats an `OperationCanceledException` raised after `HttpContext.RequestAborted` fired as a client disconnect and logs it quietly. A `PoliPageException` is logged as an unhandled error instead, once per disconnect.
+- Recognise a cancellation by `Code == PoliPageErrorCode.Aborted`, not by the inner exception's token: the `InnerException`'s `CancellationToken` is the SDK's per-attempt token, not yours.
+
+Where you want the standard behaviour back, catch `aborted` and rethrow an `OperationCanceledException` that carries your token:
+
+```csharp
+try
+{
+    return await client.Render.PdfAsync(input, cancellationToken: cancellationToken);
+}
+catch (PoliPageException ex) when (ex.Code == PoliPageErrorCode.Aborted)
+{
+    // The task now ends Canceled, and ASP.NET Core sees a client abort.
+    throw new OperationCanceledException(ex.Message, ex, cancellationToken);
 }
 ```
 

@@ -200,7 +200,7 @@ var pdf = await client.Render.PdfAsync(input, new RequestOptions
 | `RetryDelay`       | `TimeSpan`                 | `500ms`                  | Base exponential-backoff delay |
 | `RequestTimeout`   | `TimeSpan`                 | `60s`                    | Per-attempt deadline: connection, headers and body (overridable per call) |
 | `HttpClient`       | `HttpClient`               | new instance             | Inject custom transport / handlers |
-| `DownloadHttpClient` | `HttpClient`             | new bare instance        | Presigned PDF downloads; its `Timeout` bounds a download |
+| `DownloadHttpClient` | `HttpClient`             | new bare instance        | Presigned PDF downloads; its `Timeout` bounds the wait for the storage's headers only |
 | `Logger`           | `ILogger<PoliPageClient>`  | `NullLogger`             | One DEBUG/attempt, WARN/retry, ERROR/terminal |
 | `OnRetry`          | `Action<RetryEvent>`       | null                     | Fires before each retry sleep; `Attempt` is the attempt about to start (2 for the first retry) |
 | `OnError`          | `Action<Exception>`        | null                     | Fires once with the error a call is about to throw |
@@ -251,7 +251,7 @@ var pdf = await client.Render.PdfAsync(input, cancellationToken: cts.Token);
 
 When the token is canceled, the SDK throws `PoliPageException` with `Code == PoliPageErrorCode.Aborted` (`Request was aborted`, the `OperationCanceledException` as `InnerException`), at once, also during a retry wait or while the PDF is read; it is never retried. When an attempt of an API call times out, it is retried, then the SDK throws `PoliPageException` with `Code == PoliPageErrorCode.Timeout`.
 
-The presigned PDF download that `Render.PdfAsync`, `Render.PdfStreamAsync`, `RenderToFileAsync` and `DocumentDescriptor.DownloadPdfAsync` run after the API call is not bounded by `RequestTimeout` but by `DownloadHttpClient.Timeout` (100 seconds by default). If it expires, the SDK throws `PoliPageDownloadException` (`DownloadFailed`, `Failed to download PDF: network error`).
+The presigned PDF download that `Render.PdfAsync`, `Render.PdfStreamAsync`, `RenderToFileAsync` and `DocumentDescriptor.DownloadPdfAsync` run after the API call is not bounded by `RequestTimeout`. `DownloadHttpClient.Timeout` (100 seconds by default) bounds only the wait for the storage's response headers; if it expires, the SDK throws `PoliPageDownloadException` (`DownloadFailed`, `Failed to download PDF: network error`). Once the headers have arrived, reading the PDF body has no SDK time bound: pass a `CancellationToken` to bound it.
 
 The default per-attempt timeout is 60 seconds, configurable via `PoliPageClientOptions.RequestTimeout` or per call via `RequestOptions.RequestTimeout`.
 

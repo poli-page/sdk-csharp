@@ -6,12 +6,13 @@
 namespace PoliPage;
 
 /// <summary>
-/// Thrown when a DNS resolution failure, TCP connection refusal, TLS handshake error,
-/// or transport-level timeout prevents the request from reaching the server.
-/// <see cref="PoliPageException.StatusCode"/> is always <c>0</c> because no HTTP response
-/// was received.
-/// Inspect <see cref="Exception.InnerException"/> for the underlying
-/// <see cref="System.Net.Http.HttpRequestException"/> or <see cref="TaskCanceledException"/>.
+/// Thrown for a <c>network_error</c>: a DNS resolution failure, TCP connection refusal or
+/// TLS handshake error, or a connection that closed before the whole answer arrived.
+/// <see cref="PoliPageException.StatusCode"/> is always <c>0</c> because no complete HTTP
+/// response was received. A timed-out attempt is not this type: it is a
+/// <see cref="PoliPageException"/> with <c>Code == timeout</c>.
+/// Inspect <see cref="Exception.InnerException"/> for the underlying exception, typically
+/// an <see cref="System.Net.Http.HttpRequestException"/> or an <see cref="IOException"/>.
 /// </summary>
 public sealed class PoliPageNetworkException : PoliPageException
 {
@@ -48,8 +49,8 @@ public sealed class PoliPageNetworkException : PoliPageException
     /// <param name="code">The wire-level error code (see <see cref="PoliPageErrorCode"/>).</param>
     /// <param name="message">A human-readable description of the network failure.</param>
     /// <param name="innerException">
-    /// The underlying <see cref="System.Net.Http.HttpRequestException"/> or
-    /// <see cref="TaskCanceledException"/> that caused this error.
+    /// The underlying exception that caused this error, typically an
+    /// <see cref="System.Net.Http.HttpRequestException"/> or an <see cref="IOException"/>.
     /// </param>
     public PoliPageNetworkException(string code, string message, Exception innerException)
         : base(code, statusCode: 0, message, requestId: null, innerException)

@@ -9,7 +9,7 @@ namespace PoliPage.Internal;
 /// All reads forward to the inner body stream, and a read that fails raises the SDK's
 /// own error, never the HTTP stack's: <c>aborted</c> when the call's token or the read's
 /// token is cancelled, otherwise <c>DOWNLOAD_FAILED</c> without a status (a connection cut
-/// mid-body, the download client's timeout). Length / Position / Seek are not supported
+/// mid-body). The download client's timeout does not apply here: it ends with the headers. Length / Position / Seek are not supported
 /// because HTTP response bodies are not seekable in the general case.
 /// </remarks>
 internal sealed class ResponseOwnedStream : Stream

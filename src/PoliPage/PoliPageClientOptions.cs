@@ -45,8 +45,8 @@ public sealed record PoliPageClientOptions
     /// Timeout of each API attempt: the connection, the answer's headers and its whole body
     /// together. Each retry gets its own. It applies whatever <see cref="HttpClient"/> you
     /// inject (should that client's own <see cref="System.Net.Http.HttpClient.Timeout"/> be
-    /// shorter, that one fires first and the timeout error names it). The presigned PDF
-    /// download is bounded by <see cref="DownloadHttpClient"/>'s timeout instead.
+    /// shorter, that one fires first and the timeout error names it). It does not apply to the
+    /// presigned PDF download (see <see cref="DownloadHttpClient"/>).
     /// Must be greater than <see cref="TimeSpan.Zero"/>. Defaults to 60 seconds.
     /// </summary>
     public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromSeconds(60);
@@ -55,7 +55,9 @@ public sealed record PoliPageClientOptions
     /// An externally-managed <see cref="System.Net.Http.HttpClient"/> to use for
     /// all API requests. When provided, the client takes no ownership of it and
     /// will not dispose it. When <see langword="null"/> (the default), the client
-    /// creates and owns its own instance.
+    /// creates and owns its own instance. If its <c>DefaultRequestHeaders.ExpectContinue</c> is
+    /// <see langword="true"/>, the HTTP handler may resend a request whose body has not been
+    /// sent yet, outside the SDK's counted retries; leave it unset.
     /// </summary>
     public System.Net.Http.HttpClient? HttpClient { get; set; }
 
@@ -63,9 +65,12 @@ public sealed record PoliPageClientOptions
     /// An externally-managed <see cref="System.Net.Http.HttpClient"/> for the presigned PDF
     /// downloads (<see cref="Render.PdfAsync"/>, <see cref="Render.PdfStreamAsync"/>,
     /// <see cref="DocumentDescriptor.DownloadPdfAsync"/>). Its own
-    /// <see cref="System.Net.Http.HttpClient.Timeout"/> bounds a download. When
-    /// <see langword="null"/>, the client creates and owns a bare instance (100 s timeout),
-    /// separate from <see cref="HttpClient"/>, so no API header reaches the storage.
+    /// <see cref="System.Net.Http.HttpClient.Timeout"/> bounds only the wait for the storage's
+    /// response headers (it then throws <c>DOWNLOAD_FAILED</c>); once the headers have arrived,
+    /// reading the PDF body has no SDK time bound, and only the call's
+    /// <see cref="CancellationToken"/> stops it. When <see langword="null"/>, the client creates
+    /// and owns a bare instance (100 s timeout), separate from <see cref="HttpClient"/>, so no
+    /// API header reaches the storage.
     /// </summary>
     public System.Net.Http.HttpClient? DownloadHttpClient { get; set; }
 

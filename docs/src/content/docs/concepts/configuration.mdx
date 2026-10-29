@@ -13,7 +13,7 @@ The `PoliPageClient` constructor accepts a `PoliPageClientOptions` record. Every
 - `MaxRetries` — maximum retry attempts for retryable errors. Defaults to `2` (three total attempts). Must be `>= 0`.
 - `RetryDelay` — initial backoff delay. Defaults to `TimeSpan.FromMilliseconds(500)`. Doubles each attempt with jitter; a `Retry-After` header replaces it.
 - `HttpClient` — externally-managed `HttpClient` to share across requests. Caller retains ownership.
-- `DownloadHttpClient` — externally-managed `HttpClient` for the presigned PDF downloads; its own `Timeout` bounds a download. Defaults to a bare client the SDK owns (100 s timeout).
+- `DownloadHttpClient` — externally-managed `HttpClient` for the presigned PDF downloads. Its own `Timeout` bounds only the wait for the storage's response headers; the PDF body read has no SDK time bound, so pass a `CancellationToken` to bound it. Defaults to a bare client the SDK owns (100 s timeout).
 - `Logger` — `ILogger<PoliPageClient>` for SDK diagnostics. Defaults to a no-op logger.
 - `OnRetry` / `OnError` — observability callbacks. Synchronous, exception-safe.
 
