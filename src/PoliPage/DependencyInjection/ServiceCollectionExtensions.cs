@@ -52,7 +52,9 @@ public static class ServiceCollectionExtensions
                 "PoliPage: RequestTimeout must be > 0.")
             .ValidateOnStart();
 
-        services.AddHttpClient("PoliPage");
+        // No HttpClient.Timeout of its own (100 s by default): RequestTimeout bounds each
+        // API attempt, whatever its value.
+        services.AddHttpClient("PoliPage", static c => c.Timeout = Timeout.InfiniteTimeSpan);
         services.AddHttpClient("PoliPage.Download");
 
         services.AddSingleton<PoliPageClient>(static sp =>

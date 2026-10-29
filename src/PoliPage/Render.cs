@@ -134,17 +134,16 @@ public sealed class Render
             idempotencyKey,
             options,
             "application/json",
-            HttpCompletionOption.ResponseContentRead,
             cancellationToken).ConfigureAwait(false);
 
-        var descriptor = await ParseDescriptorAsync(response, cancellationToken).ConfigureAwait(false);
+        var descriptor = await ParseDescriptorAsync(response).ConfigureAwait(false);
         return descriptor with { Downloader = _downloader };
     }
 
-    private static async Task<DocumentDescriptor> ParseDescriptorAsync(
-        HttpResponseMessage response, CancellationToken cancellationToken)
+    private static async Task<DocumentDescriptor> ParseDescriptorAsync(HttpResponseMessage response)
     {
-        var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        // The transport already read the body into memory: no I/O, nothing to cancel.
+        var json = await response.Content.ReadAsStringAsync(CancellationToken.None).ConfigureAwait(false);
         // Why: Phase 8 will replace this with JsonSerializerContext (source-gen). Until then,
         // suppress IL2026/IL3050 — dynamic deserialization is only a concern for AOT-published
         // apps, not the JIT runtime the SDK currently targets.

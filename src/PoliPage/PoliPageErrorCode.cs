@@ -94,6 +94,12 @@ public static class PoliPageErrorCode
     /// <summary>The template failed to render with the supplied data (HTTP 400).</summary>
     public const string TemplateError = "TEMPLATE_ERROR";
 
+    /// <summary>
+    /// The template, a partial or an SVG asset holds an injection attempt (HTTP 400); the
+    /// message names it. Not retried.
+    /// </summary>
+    public const string TemplateUnsafe = "TEMPLATE_UNSAFE";
+
     /// <summary>The render request body is too large (HTTP 413).</summary>
     public const string RenderBodyTooLarge = "RENDER_BODY_TOO_LARGE";
 
@@ -104,10 +110,16 @@ public static class PoliPageErrorCode
     // Rate limits and quotas (HTTP 429)
     // ------------------------------------------------------------------ //
 
-    /// <summary>The account has exceeded its included usage quota for the billing period.</summary>
+    /// <summary>
+    /// The account has exceeded its included usage quota for the billing period (HTTP 429).
+    /// Not retried: it lasts until the monthly reset.
+    /// </summary>
     public const string QuotaExceeded = "QUOTA_EXCEEDED";
 
-    /// <summary>The account has exceeded the overage cap configured on the subscription.</summary>
+    /// <summary>
+    /// The account has exceeded the overage cap configured on the subscription (HTTP 429).
+    /// Not retried: it lasts until the monthly reset.
+    /// </summary>
     public const string OverageCapExceeded = "OVERAGE_CAP_EXCEEDED";
 
     /// <summary>Too many requests in a short period (HTTP 429).</summary>
@@ -120,7 +132,10 @@ public static class PoliPageErrorCode
     /// <summary>The API failed unexpectedly, or answered with a body that is not JSON.</summary>
     public const string InternalError = "INTERNAL_ERROR";
 
-    /// <summary>The API could not access the organisation's storage (HTTP 502).</summary>
+    /// <summary>
+    /// The organisation's own storage bucket refuses access (HTTP 502). Not retried: it
+    /// lasts until the bucket access is restored.
+    /// </summary>
     public const string StorageAccessDenied = "STORAGE_ACCESS_DENIED";
 
     /// <summary>
@@ -139,16 +154,25 @@ public static class PoliPageErrorCode
     /// <summary>The options or parameters passed to the SDK call are invalid.</summary>
     public const string InvalidOptions = "invalid_options";
 
-    /// <summary>The request timed out before the server responded.</summary>
+    /// <summary>
+    /// An attempt exceeded <see cref="PoliPageClientOptions.RequestTimeout"/> before its whole
+    /// answer arrived. Retried.
+    /// </summary>
     public const string Timeout = "timeout";
 
     /// <summary>A DNS, TCP, or TLS failure prevented the request from reaching the server.</summary>
     public const string NetworkError = "network_error";
 
-    /// <summary>The in-flight request was aborted by the caller.</summary>
+    /// <summary>
+    /// The caller cancelled the call through its <see cref="CancellationToken"/>. Never
+    /// retried.
+    /// </summary>
     public const string Aborted = "aborted";
 
-    /// <summary>Downloading the generated file from remote storage failed.</summary>
+    /// <summary>
+    /// Downloading the PDF from its presigned URL failed: a non-2xx storage answer (its
+    /// status is the storage's) or no complete answer (no status). Never retried.
+    /// </summary>
     public const string DownloadFailed = "DOWNLOAD_FAILED";
 
     /// <summary>

@@ -61,14 +61,21 @@ public sealed class PoliPageExceptionPredicateTests
         ex.IsNetworkError().Should().Be(expected);
     }
 
-    // IsRetryable — true for 5xx, 429, network, timeout; never for aborted.
+    // IsRetryable — true for 5xx, 429, network, timeout; never for aborted, the quota and
+    // storage-access codes (spec §9.1) or a failed presigned download.
     [Theory]
     [InlineData("network_error", 0, true)]
     [InlineData("timeout", 0, true)]
     [InlineData("aborted", 0, false)] // explicit caller cancellation is NEVER retryable
     [InlineData("INTERNAL_ERROR", 500, true)]
     [InlineData("INTERNAL_ERROR", 503, true)]
-    [InlineData("QUOTA_EXCEEDED", 429, true)]
+    [InlineData("RATE_LIMIT_EXCEEDED", 429, true)]
+    [InlineData("QUOTA_EXCEEDED", 429, false)]
+    [InlineData("OVERAGE_CAP_EXCEEDED", 429, false)]
+    [InlineData("STORAGE_ACCESS_DENIED", 502, false)]
+    [InlineData("DOWNLOAD_FAILED", 503, false)]
+    [InlineData("DOWNLOAD_FAILED", 429, false)]
+    [InlineData("DOWNLOAD_FAILED", 0, false)]
     [InlineData("INVALID_API_KEY", 401, false)]
     [InlineData("VALIDATION_ERROR", 400, false)]
     [InlineData("NOT_FOUND", 404, false)]

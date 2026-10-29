@@ -16,9 +16,9 @@ public sealed record PoliPageClientOptions
 {
     /// <summary>
     /// The Poli Page API key used to authenticate requests.
-    /// Must start with <c>pp_</c>. Required — the client will throw
-    /// <see cref="System.ArgumentException"/> at construction time when this is
-    /// <see langword="null"/>, empty, or whitespace.
+    /// Must start with <c>pp_</c>. Required — the constructor throws a
+    /// <see cref="PoliPageException"/> with code <c>invalid_options</c> (message
+    /// <c>apiKey is required</c>) when this is <see langword="null"/>, empty, or whitespace.
     /// </summary>
     public string ApiKey { get; set; } = string.Empty;
 
@@ -42,7 +42,11 @@ public sealed record PoliPageClientOptions
     public TimeSpan RetryDelay { get; set; } = TimeSpan.FromMilliseconds(500);
 
     /// <summary>
-    /// Per-request timeout applied to every HTTP call.
+    /// Timeout of each API attempt: the connection, the answer's headers and its whole body
+    /// together. Each retry gets its own. It applies whatever <see cref="HttpClient"/> you
+    /// inject (should that client's own <see cref="System.Net.Http.HttpClient.Timeout"/> be
+    /// shorter, that one fires first and the timeout error names it). The presigned PDF
+    /// download is bounded by <see cref="DownloadHttpClient"/>'s timeout instead.
     /// Must be greater than <see cref="TimeSpan.Zero"/>. Defaults to 60 seconds.
     /// </summary>
     public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromSeconds(60);
@@ -56,9 +60,12 @@ public sealed record PoliPageClientOptions
     public System.Net.Http.HttpClient? HttpClient { get; set; }
 
     /// <summary>
-    /// An externally-managed <see cref="System.Net.Http.HttpClient"/> dedicated to
-    /// large binary downloads (e.g. PDF streams). Wired up in Phase 5.
-    /// When <see langword="null"/>, the same <see cref="HttpClient"/> is used.
+    /// An externally-managed <see cref="System.Net.Http.HttpClient"/> for the presigned PDF
+    /// downloads (<see cref="Render.PdfAsync"/>, <see cref="Render.PdfStreamAsync"/>,
+    /// <see cref="DocumentDescriptor.DownloadPdfAsync"/>). Its own
+    /// <see cref="System.Net.Http.HttpClient.Timeout"/> bounds a download. When
+    /// <see langword="null"/>, the client creates and owns a bare instance (100 s timeout),
+    /// separate from <see cref="HttpClient"/>, so no API header reaches the storage.
     /// </summary>
     public System.Net.Http.HttpClient? DownloadHttpClient { get; set; }
 
@@ -69,14 +76,16 @@ public sealed record PoliPageClientOptions
     public ILogger<PoliPageClient>? Logger { get; set; }
 
     /// <summary>
-    /// Callback invoked before each retry attempt.
+    /// Callback invoked before each retry's wait, with the number of the attempt about to
+    /// start (<c>2</c> for the first retry), the delay, and the reason.
     /// Use this to log or instrument retry behaviour.
     /// </summary>
     public Action<RetryEvent>? OnRetry { get; set; }
 
     /// <summary>
-    /// Callback invoked when a request fails after all retries are exhausted.
-    /// Receives the final exception that caused the failure.
+    /// Callback invoked once with the error an API call is about to throw: after the
+    /// retries, at once for an error that is not retried, and with <c>aborted</c> when the
+    /// caller cancelled.
     /// Hook exceptions are swallowed — the original failure still surfaces to the caller.
     /// </summary>
     public Action<Exception>? OnError { get; set; }
@@ -88,7 +97,8 @@ public sealed record PoliPageClientOptions
     public Action<RequestEvent>? OnRequest { get; set; }
 
     /// <summary>
-    /// Callback invoked once per successful (2xx) HTTP response. Non-2xx responses do
+    /// Callback invoked once per successful (2xx) HTTP response, once its whole body has been
+    /// read; <c>DurationMs</c> covers the body. Non-2xx responses do
     /// not fire this hook — they surface through <see cref="OnRetry"/> (transient) or
     /// <see cref="OnError"/> (terminal). Reference: <c>sdk-node/src/index.ts:224-228</c>.
     /// </summary>

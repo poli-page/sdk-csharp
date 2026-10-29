@@ -147,17 +147,14 @@ public sealed class DocumentsTests
         ex.Which.Code.Should().Be(PoliPageErrorCode.DocumentGone);
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task GetAsync_throws_ArgumentException_on_empty_id(string? id)
+    [Fact]
+    public async Task GetAsync_throws_ArgumentNullException_on_null_id()
     {
         using var harness = StartHarness();
 
-        var act = async () => await harness.Client.Documents.GetAsync(id!);
+        var act = async () => await harness.Client.Documents.GetAsync(null!);
 
-        await act.Should().ThrowAsync<ArgumentException>().WithParameterName("documentId");
+        await act.Should().ThrowAsync<ArgumentNullException>().WithParameterName("documentId");
     }
 
     // ------------------------------------------------------------------ //
@@ -219,17 +216,14 @@ public sealed class DocumentsTests
         await act.Should().ThrowAsync<PoliPageNotFoundException>();
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task DeleteAsync_throws_ArgumentException_on_empty_id(string? id)
+    [Fact]
+    public async Task DeleteAsync_throws_ArgumentNullException_on_null_id()
     {
         using var harness = StartHarness();
 
-        var act = async () => await harness.Client.Documents.DeleteAsync(id!);
+        var act = async () => await harness.Client.Documents.DeleteAsync(null!);
 
-        await act.Should().ThrowAsync<ArgumentException>().WithParameterName("documentId");
+        await act.Should().ThrowAsync<ArgumentNullException>().WithParameterName("documentId");
     }
 
     // ------------------------------------------------------------------ //
@@ -316,17 +310,14 @@ public sealed class DocumentsTests
         await act.Should().ThrowAsync<PoliPageNotFoundException>();
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task PreviewAsync_throws_ArgumentException_on_empty_id(string? id)
+    [Fact]
+    public async Task PreviewAsync_throws_ArgumentNullException_on_null_id()
     {
         using var harness = StartHarness();
 
-        var act = async () => await harness.Client.Documents.PreviewAsync(id!);
+        var act = async () => await harness.Client.Documents.PreviewAsync(null!);
 
-        await act.Should().ThrowAsync<ArgumentException>().WithParameterName("documentId");
+        await act.Should().ThrowAsync<ArgumentNullException>().WithParameterName("documentId");
     }
 
     // ------------------------------------------------------------------ //
@@ -492,16 +483,13 @@ public sealed class DocumentsTests
         inner.GetProperty("quality").GetInt32().Should().Be(500);
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task ThumbnailsAsync_throws_ArgumentException_on_empty_id(string? id)
+    [Fact]
+    public async Task ThumbnailsAsync_throws_ArgumentNullException_on_null_id()
     {
         using var harness = StartHarness();
 
-        var act = async () => await harness.Client.Documents.ThumbnailsAsync(id!, new ThumbnailOptions());
+        var act = async () => await harness.Client.Documents.ThumbnailsAsync(null!, new ThumbnailOptions());
 
-        await act.Should().ThrowAsync<ArgumentException>().WithParameterName("documentId");
+        await act.Should().ThrowAsync<ArgumentNullException>().WithParameterName("documentId");
     }
 }

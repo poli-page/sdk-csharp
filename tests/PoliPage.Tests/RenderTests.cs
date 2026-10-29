@@ -396,7 +396,10 @@ public sealed class RenderTests
 
         var act = async () => await client.Render.PdfAsync(DefaultInput(), cancellationToken: cts.Token);
 
-        await act.Should().ThrowAsync<OperationCanceledException>();
+        var thrown = await act.Should().ThrowAsync<PoliPageException>();
+        thrown.Which.Code.Should().Be(PoliPageErrorCode.Aborted);
+        thrown.Which.Message.Should().Be("Request was aborted");
+        thrown.Which.InnerException.Should().BeAssignableTo<OperationCanceledException>();
     }
 
     // ------------------------------------------------------------------ //
@@ -421,7 +424,9 @@ public sealed class RenderTests
 
         var act = async () => await client.Render.PdfAsync(DefaultInput(), cancellationToken: cts.Token);
 
-        await act.Should().ThrowAsync<OperationCanceledException>();
+        var thrown = await act.Should().ThrowAsync<PoliPageException>();
+        thrown.Which.Code.Should().Be(PoliPageErrorCode.Aborted);
+        thrown.Which.IsRetryable().Should().BeFalse();
         cts.Token.IsCancellationRequested.Should().BeTrue();
     }
 

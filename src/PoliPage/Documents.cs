@@ -38,7 +38,7 @@ public sealed class Documents
     /// <param name="options">Optional per-call overrides (timeout, extra headers).</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
     /// <returns>A fresh <see cref="DocumentDescriptor"/> with a new presigned URL.</returns>
-    /// <exception cref="ArgumentException"><paramref name="documentId"/> is null, empty, or whitespace.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="documentId"/> is <see langword="null"/>.</exception>
     /// <exception cref="PoliPageNotFoundException">The document does not exist.</exception>
     /// <exception cref="PoliPageGoneException">The document was soft-deleted.</exception>
     /// <exception cref="PoliPageException">Any other API failure.</exception>
@@ -48,8 +48,9 @@ public sealed class Documents
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(documentId))
-            throw new ArgumentException("documentId must not be null, empty, or whitespace.", nameof(documentId));
+        // Only null is refused: any other id, even empty, is URL-encoded into the path and
+        // the API answers it (an empty id reaches no route: 404 NOT_FOUND).
+        ArgumentNullException.ThrowIfNull(documentId);
 
         var path = $"/v1/documents/{Uri.EscapeDataString(documentId)}";
 
@@ -57,10 +58,9 @@ public sealed class Documents
             path,
             options,
             "application/json",
-            HttpCompletionOption.ResponseContentRead,
             cancellationToken).ConfigureAwait(false);
 
-        var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        var json = await response.Content.ReadAsStringAsync(CancellationToken.None).ConfigureAwait(false);
 #pragma warning disable IL2026, IL3050
         var descriptor = JsonSerializer.Deserialize<DocumentDescriptor>(json, JsonOptions);
 #pragma warning restore IL2026, IL3050
@@ -81,7 +81,7 @@ public sealed class Documents
     /// <param name="documentId">The server-issued document identifier (e.g. <c>doc_…</c>).</param>
     /// <param name="options">Optional per-call overrides (timeout, extra headers).</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
-    /// <exception cref="ArgumentException"><paramref name="documentId"/> is null, empty, or whitespace.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="documentId"/> is <see langword="null"/>.</exception>
     /// <exception cref="PoliPageNotFoundException">The document does not exist.</exception>
     /// <exception cref="PoliPageException">Any other API failure.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
@@ -90,8 +90,9 @@ public sealed class Documents
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(documentId))
-            throw new ArgumentException("documentId must not be null, empty, or whitespace.", nameof(documentId));
+        // Only null is refused: any other id, even empty, is URL-encoded into the path and
+        // the API answers it (an empty id reaches no route: 404 NOT_FOUND).
+        ArgumentNullException.ThrowIfNull(documentId);
 
         var path = $"/v1/documents/{Uri.EscapeDataString(documentId)}";
 
@@ -108,7 +109,7 @@ public sealed class Documents
     /// <param name="options">Optional per-call overrides (timeout, extra headers).</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
     /// <returns>A <see cref="DocumentPreviewResult"/> with the full HTML body and page count.</returns>
-    /// <exception cref="ArgumentException"><paramref name="documentId"/> is null, empty, or whitespace.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="documentId"/> is <see langword="null"/>.</exception>
     /// <exception cref="PoliPageNotFoundException">The document does not exist.</exception>
     /// <exception cref="PoliPageGoneException">The document was soft-deleted.</exception>
     /// <exception cref="PoliPageException">Any other API failure.</exception>
@@ -118,8 +119,9 @@ public sealed class Documents
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(documentId))
-            throw new ArgumentException("documentId must not be null, empty, or whitespace.", nameof(documentId));
+        // Only null is refused: any other id, even empty, is URL-encoded into the path and
+        // the API answers it (an empty id reaches no route: 404 NOT_FOUND).
+        ArgumentNullException.ThrowIfNull(documentId);
 
         var path = $"/v1/documents/{Uri.EscapeDataString(documentId)}/preview";
 
@@ -127,10 +129,9 @@ public sealed class Documents
             path,
             options,
             "text/html",
-            HttpCompletionOption.ResponseContentRead,
             cancellationToken).ConfigureAwait(false);
 
-        var html = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        var html = await response.Content.ReadAsStringAsync(CancellationToken.None).ConfigureAwait(false);
         var pageCount = ParseDocumentPageCount(response);
 
         return new DocumentPreviewResult
@@ -151,7 +152,7 @@ public sealed class Documents
     /// <param name="options">Optional per-call overrides (timeout, extra headers).</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
     /// <returns>One <see cref="Thumbnail"/> per page of the source document.</returns>
-    /// <exception cref="ArgumentException"><paramref name="documentId"/> is null, empty, or whitespace.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="documentId"/> is <see langword="null"/>.</exception>
     /// <exception cref="PoliPageNotFoundException">The document does not exist.</exception>
     /// <exception cref="PoliPageException">Any other API failure.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
@@ -161,8 +162,9 @@ public sealed class Documents
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(documentId))
-            throw new ArgumentException("documentId must not be null, empty, or whitespace.", nameof(documentId));
+        // Only null is refused: any other id, even empty, is URL-encoded into the path and
+        // the API answers it (an empty id reaches no route: 404 NOT_FOUND).
+        ArgumentNullException.ThrowIfNull(documentId);
 
         var path = $"/v1/documents/{Uri.EscapeDataString(documentId)}/thumbnails";
         var idempotencyKey = options?.IdempotencyKey ?? Guid.NewGuid().ToString();
@@ -176,10 +178,9 @@ public sealed class Documents
             idempotencyKey,
             options,
             "application/json",
-            HttpCompletionOption.ResponseContentRead,
             cancellationToken).ConfigureAwait(false);
 
-        var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        var json = await response.Content.ReadAsStringAsync(CancellationToken.None).ConfigureAwait(false);
 #pragma warning disable IL2026, IL3050
         var envelope = JsonSerializer.Deserialize<ThumbnailsEnvelope>(json, JsonOptions);
 #pragma warning restore IL2026, IL3050

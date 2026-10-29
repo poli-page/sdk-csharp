@@ -68,7 +68,7 @@ public sealed class PoliPageClient : IDisposable
 
         // Config validation uses PoliPageException("invalid_options") per sdk-node/src/index.ts:84-86.
         if (string.IsNullOrWhiteSpace(options.ApiKey))
-            throw new PoliPageException(PoliPageErrorCode.InvalidOptions, statusCode: 0, "PoliPage: ApiKey is required.");
+            throw new PoliPageException(PoliPageErrorCode.InvalidOptions, statusCode: 0, SdkErrors.InvalidOptionsMessage);
 
         if (options.MaxRetries < 0)
             throw new PoliPageException(PoliPageErrorCode.InvalidOptions, statusCode: 0, "PoliPage: MaxRetries must be ≥ 0.");
@@ -82,30 +82,16 @@ public sealed class PoliPageClient : IDisposable
         _options = options;
         BaseAddress = options.BaseUrl ?? DefaultBaseAddress;
 
-        if (options.HttpClient is not null)
-        {
-            _httpClient = options.HttpClient;
-            _ownsHttpClient = false;
-        }
-        else
-        {
-            _httpClient = new HttpClient { BaseAddress = BaseAddress };
-            _ownsHttpClient = true;
-        }
+        (_httpClient, _ownsHttpClient) = options.HttpClient is not null
+            ? (options.HttpClient, false)
+            : (CreateApiHttpClient(BaseAddress), true);
 
         // Why: presigned S3 URLs reject requests that carry an Authorization header alongside
         // the URL signature, and some object stores 400 on an unexpected User-Agent. The
         // download path uses its own bare HttpClient so the SDK's API auth/UA can never leak.
-        if (options.DownloadHttpClient is not null)
-        {
-            _downloadHttp = options.DownloadHttpClient;
-            _ownsDownloadHttp = false;
-        }
-        else
-        {
-            _downloadHttp = new HttpClient();
-            _ownsDownloadHttp = true;
-        }
+        (_downloadHttp, _ownsDownloadHttp) = options.DownloadHttpClient is not null
+            ? (options.DownloadHttpClient, false)
+            : (new HttpClient(), true);
 
         var transport = new HttpTransport(
             _httpClient,
@@ -122,6 +108,11 @@ public sealed class PoliPageClient : IDisposable
         _render = new Render(transport, DownloadAsync, DownloadStreamAsync);
         _documents = new Documents(transport, DownloadAsync);
     }
+
+    // No HttpClient.Timeout of its own (it defaults to 100 s): RequestTimeout bounds each
+    // attempt, whatever its value.
+    private static HttpClient CreateApiHttpClient(Uri baseAddress)
+        => new() { BaseAddress = baseAddress, Timeout = System.Threading.Timeout.InfiniteTimeSpan };
 
     /// <summary>
     /// The effective base address used for all API requests.
@@ -158,23 +149,48 @@ public sealed class PoliPageClient : IDisposable
     /// <summary>
     /// Fetches the bytes at <paramref name="url"/> via the SDK's dedicated, header-less
     /// download transport. Used by <see cref="DocumentDescriptor.DownloadPdfAsync"/> and
-    /// by <see cref="Render.PdfAsync"/> for the post-render PDF fetch step.
+    /// by <see cref="Render.PdfAsync"/> for the post-render PDF fetch step. The download is
+    /// never retried (spec §9.1).
     /// </summary>
     internal async Task<byte[]> DownloadAsync(string url, CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        using var request = BuildDownloadRequest(url);
         using var response = await SendDownloadAsync(request, cancellationToken).ConfigureAwait(false);
 
-        await ThrowIfDownloadFailedAsync(response).ConfigureAwait(false);
+        ThrowIfDownloadFailed(response);
 
-        return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (SdkErrors.IsTransportFailure(ex) || cancellationToken.IsCancellationRequested)
+        {
+            // A connection cut or a timeout mid-body: the SDK's own error, never the raw one.
+            throw DownloadFailure(ex, cancellationToken);
+        }
+    }
+
+    // A plain GET to object storage: no Authorization, no Idempotency-Key.
+    private static HttpRequestMessage BuildDownloadRequest(string url)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        NoHiddenResend.Apply(request);
+        return request;
     }
 
     /// <summary>
+    /// The error for a download that got no complete answer: <c>aborted</c> when the
+    /// caller cancelled, otherwise <c>DOWNLOAD_FAILED</c> without a status (a connection,
+    /// DNS or TLS failure, a connection cut mid-body, or the download client's timeout).
+    /// </summary>
+    internal static PoliPageException DownloadFailure(Exception ex, CancellationToken cancellationToken)
+        => cancellationToken.IsCancellationRequested ? SdkErrors.Aborted(ex) : SdkErrors.DownloadNetwork(ex);
+
+    /// <summary>
     /// Sends a request on the dedicated download transport, translating transport-level
-    /// failures (DNS, connection refused, TLS) into the SDK's typed
-    /// <see cref="PoliPageDownloadException"/> so callers never see a raw
-    /// <see cref="HttpRequestException"/>. Caller cancellation is re-thrown unchanged.
+    /// failures (DNS, connection refused, TLS, the download client's timeout) into the SDK's
+    /// typed <see cref="PoliPageDownloadException"/> so callers never see a raw
+    /// <see cref="HttpRequestException"/>, and caller cancellation into <c>aborted</c>.
     /// </summary>
     private async Task<HttpResponseMessage> SendDownloadAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
@@ -185,18 +201,9 @@ public sealed class PoliPageClient : IDisposable
                 .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (Exception ex) when (SdkErrors.IsTransportFailure(ex) || cancellationToken.IsCancellationRequested)
         {
-            throw; // Caller cancel: surface as-is, never wrap.
-        }
-        catch (HttpRequestException ex)
-        {
-            throw new PoliPageDownloadException(
-                PoliPageErrorCode.DownloadFailed,
-                statusCode: 0,
-                "Presigned download failed: network error.",
-                requestId: null,
-                ex);
+            throw DownloadFailure(ex, cancellationToken);
         }
     }
 
@@ -204,19 +211,29 @@ public sealed class PoliPageClient : IDisposable
     /// Streaming variant of <see cref="DownloadAsync"/>. Returns a <see cref="Stream"/>
     /// that owns the underlying <see cref="HttpResponseMessage"/> so the caller can
     /// dispose both with a single <c>using</c>. Used by <see cref="Render.PdfStreamAsync"/>.
+    /// Its read failures are SDK errors too: <c>aborted</c> or <c>DOWNLOAD_FAILED</c>.
     /// </summary>
     internal async Task<Stream> DownloadStreamAsync(string url, CancellationToken cancellationToken)
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        var request = BuildDownloadRequest(url);
         HttpResponseMessage? response = null;
         try
         {
             response = await SendDownloadAsync(request, cancellationToken).ConfigureAwait(false);
 
-            await ThrowIfDownloadFailedAsync(response).ConfigureAwait(false);
+            ThrowIfDownloadFailed(response);
 
-            var bodyStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            var owned = new ResponseOwnedStream(bodyStream, response);
+            Stream bodyStream;
+            try
+            {
+                bodyStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (SdkErrors.IsTransportFailure(ex) || cancellationToken.IsCancellationRequested)
+            {
+                throw DownloadFailure(ex, cancellationToken);
+            }
+
+            var owned = new ResponseOwnedStream(bodyStream, response, cancellationToken);
             response = null; // ownership transferred to the stream wrapper
             return owned;
         }
@@ -227,19 +244,15 @@ public sealed class PoliPageClient : IDisposable
         }
     }
 
-    private static Task ThrowIfDownloadFailedAsync(HttpResponseMessage response)
+    private static void ThrowIfDownloadFailed(HttpResponseMessage response)
     {
         if (response.IsSuccessStatusCode)
-            return Task.CompletedTask;
+            return;
 
         var requestId = response.Headers.TryGetValues("X-Request-Id", out var v)
             ? v.FirstOrDefault()
             : null;
-        throw new PoliPageDownloadException(
-            PoliPageErrorCode.DownloadFailed,
-            (int)response.StatusCode,
-            $"Presigned download failed: HTTP {(int)response.StatusCode}",
-            requestId);
+        throw SdkErrors.DownloadStatus((int)response.StatusCode, requestId);
     }
 
     /// <summary>

@@ -84,8 +84,10 @@ public class PoliPageException : Exception
 
     /// <summary>
     /// <see langword="true"/> for HTTP 429 — the request was rate-limited.
-    /// The SDK has already retried up to <see cref="PoliPageClientOptions.MaxRetries"/>
-    /// times before surfacing this; back off further at the caller level if you see it.
+    /// For <c>RATE_LIMIT_EXCEEDED</c> the SDK has already retried up to
+    /// <see cref="PoliPageClientOptions.MaxRetries"/> times before surfacing this; back off
+    /// further at the caller level if you see it. <c>QUOTA_EXCEEDED</c> and
+    /// <c>OVERAGE_CAP_EXCEEDED</c> are surfaced at once, without retries.
     /// </summary>
     /// <remarks>Mirrors <c>sdk-node/src/error.ts:100-102</c>.</remarks>
     public bool IsRateLimitError()
@@ -108,14 +110,27 @@ public class PoliPageException : Exception
         || string.Equals(Code, PoliPageErrorCode.Timeout, StringComparison.Ordinal);
 
     /// <summary>
-    /// <see langword="true"/> if the SDK considers this error retryable (5xx, 429, network,
-    /// timeout). Caller-aborted requests (<c>code: aborted</c>) are NEVER retryable.
+    /// <see langword="true"/> if the SDK considers this error retryable: a network error, a
+    /// timeout, a 5xx or a 429, except <c>QUOTA_EXCEEDED</c>, <c>OVERAGE_CAP_EXCEEDED</c>
+    /// (429) and <c>STORAGE_ACCESS_DENIED</c> (502), which waiting cannot fix: the quota
+    /// lasts until the monthly reset and the bucket access until the customer restores it.
+    /// Caller-aborted requests (<c>code: aborted</c>) and failed presigned downloads
+    /// (<c>DOWNLOAD_FAILED</c>, whatever the storage status) are never retryable.
     /// </summary>
-    /// <remarks>Mirrors <c>sdk-node/src/error.ts:149-155</c>.</remarks>
+    /// <remarks>
+    /// The SDK applies the same rule to its own retries and has already retried up to
+    /// <see cref="PoliPageClientOptions.MaxRetries"/> times; this predicate is useful when an
+    /// outer queue or scheduler decides whether to re-enqueue the job.
+    /// </remarks>
     public bool IsRetryable()
     {
-        if (string.Equals(Code, PoliPageErrorCode.Aborted, StringComparison.Ordinal))
+        if (string.Equals(Code, PoliPageErrorCode.Aborted, StringComparison.Ordinal)
+            || string.Equals(Code, PoliPageErrorCode.DownloadFailed, StringComparison.Ordinal)
+            || Internal.SdkErrors.IsNonRetryableCode(Code))
+        {
             return false;
+        }
+
         if (IsNetworkError())
             return true;
         if (StatusCode >= 500)
