@@ -29,8 +29,9 @@ the upgrade guide.
   `Request was aborted`, the `OperationCanceledException` as
   `InnerException`) instead of letting `OperationCanceledException`
   propagate: during an attempt, during the wait before a retry (at once), and
-  while a PDF is read, from `Render.PdfAsync`, `DocumentDescriptor.DownloadPdfAsync`
-  or the stream of `Render.PdfStreamAsync`. `aborted` is never retried and
+  while a PDF is read, from `Render.PdfAsync`, `DocumentDescriptor.DownloadPdfAsync`,
+  `RenderToFileAsync` or the stream of `Render.PdfStreamAsync` (a `CopyToAsync`
+  of that stream cancelled while its destination writes included). `aborted` is never retried and
   `OnError` now receives it. `catch (OperationCanceledException)` around an
   SDK call no longer catches a cancellation; catch `PoliPageException` with
   `Code == PoliPageErrorCode.Aborted`.

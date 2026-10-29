@@ -148,6 +148,26 @@ public sealed class BodyReadTests
     }
 
     [Fact]
+    public async Task A_pdf_stream_copy_cancelled_while_the_destination_writes_raises_aborted()
+    {
+        await using var server = new MockServer(origin => [Descriptor(origin), Bytes(200, Pdf, "application/pdf")]);
+        using var client = new PoliPageClient(Options(server));
+        using var cts = new CancellationTokenSource();
+
+        var stream = await client.Render.PdfStreamAsync(Input, cancellationToken: cts.Token);
+        await using (stream)
+        {
+            // The cancellation lands while the destination writes, not while the PDF is read.
+            await using var destination = new CancellingDestination(cts);
+            var act = () => stream.CopyToAsync(destination, cts.Token);
+
+            var thrown = await act.Should().ThrowAsync<PoliPageException>();
+            thrown.Which.Code.Should().Be(PoliPageErrorCode.Aborted);
+            thrown.Which.InnerException.Should().BeAssignableTo<OperationCanceledException>();
+        }
+    }
+
+    [Fact]
     public async Task A_download_cancelled_mid_body_raises_aborted()
     {
         await using var server = new MockServer(origin => [Descriptor(origin), Bytes(200, Pdf, "application/pdf").Drip()]);
@@ -172,5 +192,16 @@ public sealed class BodyReadTests
         var thrown = await act.Should().ThrowAsync<PoliPageDownloadException>();
         thrown.Which.Message.Should().Be("Failed to download PDF: network error");
         thrown.Which.InnerException.Should().BeAssignableTo<OperationCanceledException>();
+    }
+
+    /// <summary>A destination whose first write cancels the copy's token, then honours it.</summary>
+    private sealed class CancellingDestination(CancellationTokenSource cts) : MemoryStream
+    {
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await cts.CancelAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+            await base.WriteAsync(buffer, cancellationToken);
+        }
     }
 }

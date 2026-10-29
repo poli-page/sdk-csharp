@@ -71,7 +71,6 @@ internal sealed class ResponseOwnedStream : Stream
     public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         => ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
 
-    // Stream.CopyToAsync (and so RenderToFileAsync) reads through this overload.
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
         try
@@ -81,6 +80,37 @@ internal sealed class ResponseOwnedStream : Stream
         catch (Exception ex) when (IsReadFailure(ex, cancellationToken))
         {
             throw Failure(ex, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Copies through the mapped reads; a cancellation of <paramref name="cancellationToken"/>
+    /// while <paramref name="destination"/> writes is <c>aborted</c> too, so a cancelled copy
+    /// (and <c>RenderToFileAsync</c>) never throws a raw <see cref="OperationCanceledException"/>.
+    /// Any other failure of the destination is its own and propagates unchanged.
+    /// </summary>
+    public override async Task CopyToAsync(Stream destination, int bufferSize, CancellationToken cancellationToken)
+    {
+        ValidateCopyToArguments(destination, bufferSize);
+        var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(bufferSize);
+        try
+        {
+            int read;
+            while ((read = await ReadAsync(buffer.AsMemory(0, bufferSize), cancellationToken).ConfigureAwait(false)) != 0)
+            {
+                try
+                {
+                    await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw SdkErrors.Aborted(ex);
+                }
+            }
+        }
+        finally
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 
