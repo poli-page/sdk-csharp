@@ -23,7 +23,7 @@ var client = new PoliPageClient(new PoliPageClientOptions
 
 ## Retry and error callbacks
 
-`OnRetry(RetryEvent)` fires before each retry sleep with `Attempt`, `Delay`, `StatusCode`, and `Reason`. `OnError(Exception)` fires once when a request fails terminally after retries are exhausted.
+`OnRetry(RetryEvent)` fires before each retry sleep with `Attempt` (the attempt about to start: `2` for the first retry), `Delay`, `StatusCode`, and `Reason`. `OnError(Exception)` fires once with the error a call is about to throw: after the retries, at once for an error that is not retried, and with `aborted` when you cancel. `OnResponse` fires for each 2xx answer once its body is read.
 
 Both callbacks are synchronous and exception-safe — a callback that throws is swallowed by the SDK and does not break the request.
 

@@ -198,15 +198,16 @@ var pdf = await client.Render.PdfAsync(input, new RequestOptions
 | `BaseUrl`          | `Uri`                      | `https://api.poli.page`  | API base URL |
 | `MaxRetries`       | `int`                      | `2`                      | Retry budget on top of the initial attempt |
 | `RetryDelay`       | `TimeSpan`                 | `500ms`                  | Base exponential-backoff delay |
-| `RequestTimeout`   | `TimeSpan`                 | `60s`                    | Per-request deadline (overridable per call) |
+| `RequestTimeout`   | `TimeSpan`                 | `60s`                    | Per-attempt deadline: connection, headers and body (overridable per call) |
 | `HttpClient`       | `HttpClient`               | new instance             | Inject custom transport / handlers |
+| `DownloadHttpClient` | `HttpClient`             | new bare instance        | Presigned PDF downloads; its `Timeout` bounds a download |
 | `Logger`           | `ILogger<PoliPageClient>`  | `NullLogger`             | One DEBUG/attempt, WARN/retry, ERROR/terminal |
-| `OnRetry`          | `Action<RetryEvent>`       | null                     | Fires before each retry sleep |
-| `OnError`          | `Action<Exception>`        | null                     | Fires on terminal failure |
+| `OnRetry`          | `Action<RetryEvent>`       | null                     | Fires before each retry sleep; `Attempt` is the attempt about to start (2 for the first retry) |
+| `OnError`          | `Action<Exception>`        | null                     | Fires once with the error a call is about to throw |
 
 ## Error handling
 
-The SDK throws `PoliPageException` for every API failure. The base type carries `Code`, `StatusCode`, `Message`, `RequestId`, and `InnerException`. Subclasses route common cases for `catch`-based branching:
+The SDK throws `PoliPageException` for every failure: API errors, network failures, timeouts, a cancellation (`aborted`), download failures and invalid options. The base type carries `Code`, `StatusCode`, `Message`, `RequestId`, and `InnerException`. Subclasses route common cases for `catch`-based branching:
 
 ```csharp
 try
@@ -231,10 +232,10 @@ Exception hierarchy:
 - `PoliPageAuthException` — 401 / 403. Covers `MissingApiKey`, `InvalidApiKey`, `Forbidden`, `OrganizationPaymentGrace`, `EnvironmentProtected`, `ThumbnailsNotAvailable`.
 - `PoliPageNotFoundException` — 404. Covers `ProjectNotFound`, `ProjectNotInEnvironment`, `TemplateNotFound`, `DocumentNotFound`, `NotFound`.
 - `PoliPageGoneException` — 410 `DocumentGone`. The document has been deleted.
-- `PoliPageValidationException` — 400 / 422. Bad input payload.
-- `PoliPageRateLimitException` — 429 (`RateLimitExceeded`, `QuotaExceeded`, `OverageCapExceeded`). Exposes `RetryAfter`.
-- `PoliPageNetworkException` — DNS / TCP / TLS failure (`NetworkError`). Retryable. A per-request timeout is a base `PoliPageException` with `Code == PoliPageErrorCode.Timeout`.
-- `PoliPageDownloadException` — presigned S3 URL fetch failed (commonly URL expiry).
+- `PoliPageValidationException` — 400 / 422. Bad input payload, or a template that fails (`TemplateError`) or holds an injection attempt (`TemplateUnsafe`).
+- `PoliPageRateLimitException` — 429 (`RateLimitExceeded`, `QuotaExceeded`, `OverageCapExceeded`). Exposes `RetryAfter`. Only `RateLimitExceeded` is retried.
+- `PoliPageNetworkException` — DNS / TCP / TLS failure, or a connection closed before the whole answer (`NetworkError`, `Network request failed`). Retryable. A timed-out attempt is a base `PoliPageException` with `Code == PoliPageErrorCode.Timeout` (`Request timed out after <ms>ms`).
+- `PoliPageDownloadException` — presigned URL fetch failed (`DownloadFailed`): the storage status (commonly 403 for an expired URL), or none for a network failure or timeout. Never retried.
 
 Every subclass exposes the same `Code`, `StatusCode`, `Message`, and `RequestId` properties as the base type. Use `ex.Code` against the `PoliPageErrorCode` constants for fine-grained branching when the subclass is too coarse.
 
@@ -248,11 +249,11 @@ using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 var pdf = await client.Render.PdfAsync(input, cancellationToken: cts.Token);
 ```
 
-When the token is canceled, the SDK throws `OperationCanceledException` (or `TaskCanceledException`); when the per-request timeout of an API call expires, it throws `PoliPageException` with `Code == PoliPageErrorCode.Timeout`. Caller-aborted operations are never retried.
+When the token is canceled, the SDK throws `PoliPageException` with `Code == PoliPageErrorCode.Aborted` (`Request was aborted`, the `OperationCanceledException` as `InnerException`), at once, also during a retry wait or while the PDF is read; it is never retried. When an attempt of an API call times out, it is retried, then the SDK throws `PoliPageException` with `Code == PoliPageErrorCode.Timeout`.
 
-The presigned PDF download that `Render.PdfAsync`, `Render.PdfStreamAsync`, `RenderToFileAsync` and `DocumentDescriptor.DownloadPdfAsync` run after the API call is not bounded by `RequestTimeout` but by `DownloadHttpClient.Timeout` (100 seconds by default). If it expires before the storage service answers, the SDK throws `TaskCanceledException` (with a `TimeoutException` as `InnerException`), not `PoliPageException`, even though you did not cancel.
+The presigned PDF download that `Render.PdfAsync`, `Render.PdfStreamAsync`, `RenderToFileAsync` and `DocumentDescriptor.DownloadPdfAsync` run after the API call is not bounded by `RequestTimeout` but by `DownloadHttpClient.Timeout` (100 seconds by default). If it expires, the SDK throws `PoliPageDownloadException` (`DownloadFailed`, `Failed to download PDF: network error`).
 
-The default per-request timeout is 60 seconds, configurable via `PoliPageClientOptions.RequestTimeout` or per call via `RequestOptions.RequestTimeout`.
+The default per-attempt timeout is 60 seconds, configurable via `PoliPageClientOptions.RequestTimeout` or per call via `RequestOptions.RequestTimeout`.
 
 ## Observability
 
@@ -295,13 +296,13 @@ The SDK emits one OpenTelemetry activity per HTTP attempt under the source name 
 
 ## Retries & idempotency
 
-The SDK retries on **5xx**, **429**, **network errors**, and **timeouts**. Backoff is exponential (`RetryDelay × 2^N`) with jitter in `[0.5, 1.5)`, capped at the server's `Retry-After` header when provided (max 30s). Every POST sends an auto-generated `Idempotency-Key` (UUID v4); pass `RequestOptions.IdempotencyKey` to override:
+The SDK retries on **5xx**, **429**, **network errors**, and **timeouts**, except `QUOTA_EXCEEDED`, `OVERAGE_CAP_EXCEEDED` and `STORAGE_ACCESS_DENIED`, which waiting cannot fix. A `Retry-After` header (integer seconds or an HTTP-date, clamped to 0–30 s) sets the delay; otherwise the backoff is `RetryDelay × 2^(n-1)` with jitter in `[0.5, 1.5)`. The presigned download is never retried, and the HTTP stack never resends a request behind the SDK's back. Every POST sends an auto-generated `Idempotency-Key` (UUID v4), the same on every attempt; pass `RequestOptions.IdempotencyKey` to override:
 
 ```csharp
 await client.Render.PdfAsync(input, new RequestOptions { IdempotencyKey = "inv-INV-001" });
 ```
 
-Disable retries by setting `MaxRetries = 0` in `PoliPageClientOptions`.
+The API does not deduplicate on `Idempotency-Key`: a render retried after a late 5xx, a `timeout` or a `network_error` can store a second document. Disable retries by setting `MaxRetries = 0` in `PoliPageClientOptions`.
 
 ## Type system
 

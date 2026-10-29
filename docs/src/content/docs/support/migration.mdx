@@ -5,6 +5,17 @@ description: Upgrade guides for moving between breaking releases of the .NET SDK
 
 This page tracks breaking changes between releases of the `PoliPage` NuGet package. While the package is on 0.x, a breaking change bumps the minor version. For the full per-release diff, see the [changelog](../changelog/).
 
+## From 0.10.0 to the next release (unreleased)
+
+The SDK follows the Poli Page API contract: the retry rules, the SDK's error messages and caller cancellation are the same in every Poli Page SDK. The full guide is in [`MIGRATION.md` in the repo](https://github.com/poli-page/sdk-csharp/blob/main/MIGRATION.md#from-0100-to-the-next-release-unreleased).
+
+- Cancelling a call's `CancellationToken` throws `PoliPageException` with `Code == PoliPageErrorCode.Aborted` instead of `OperationCanceledException`, which is its `InnerException`. See [Cancellation](../../production/cancellation/).
+- `QUOTA_EXCEEDED`, `OVERAGE_CAP_EXCEEDED` and `STORAGE_ACCESS_DENIED` are not retried, and `IsRetryable()` is `false` for them and for every `DOWNLOAD_FAILED`.
+- `RetryEvent.Attempt` is the attempt about to start: `2` for the first retry.
+- A download timeout throws `PoliPageDownloadException` (`DOWNLOAD_FAILED`) instead of `TaskCanceledException`.
+- The SDK's own messages are the specification's texts, e.g. `Network request failed` and `Request timed out after <ms>ms`.
+- An empty document id reaches the API (`404 NOT_FOUND`) instead of throwing `ArgumentException`.
+
 ## From 0.9.x to 0.10.0
 
 0.10.0 follows the environments contract: an API key belongs to one environment (`pp_sandbox_…`, `pp_live_…`, `pp_staging_…`) and a render uses the project's copy published in that environment. Every removal ships at once, with no deprecation window. The full guide, with before/after code, is in [`MIGRATION.md` in the repo](https://github.com/poli-page/sdk-csharp/blob/main/MIGRATION.md#from-09x-to-0100).

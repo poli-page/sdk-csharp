@@ -197,13 +197,10 @@ Console.WriteLine($"  {Ansi.Green("✔")} deleted {doc.DocumentId}");
 //    `PoliPageException` (or a more specific subclass: PoliPageNotFoundException,
 //    PoliPageAuthException, etc.). Inspect `Code`, `StatusCode`, `Message`,
 //    `RequestId`, or pattern-match on the subclass. Cancelling your own
-//    `CancellationToken` is not an SDK error: it propagates as
-//    `OperationCanceledException`, never as `PoliPageException`.
-//    One exception: the presigned PDF download that follows the API call is
-//    bounded by `DownloadHttpClient.Timeout` (100 s by default), not by
-//    `RequestTimeout`. If it times out before the response headers arrive, it
-//    throws `TaskCanceledException` (InnerException: `TimeoutException`) even
-//    though you did not cancel, so `catch (PoliPageException)` does not catch it.
+//    `CancellationToken` throws `PoliPageException` with code `aborted`, and a
+//    failed presigned PDF download (bounded by `DownloadHttpClient.Timeout`,
+//    100 s by default) a `PoliPageDownloadException` (`DOWNLOAD_FAILED`): every
+//    SDK failure is a `PoliPageException`.
 // ─────────────────────────────────────────────────────────────────────────────
 Ansi.Step(9, totalSteps, "not-found — DEMO ONLY (we trigger an error on purpose)");
 Console.WriteLine(Ansi.Yellow("  ⚠  This step is intentional — the SDK is about to throw, but the"));

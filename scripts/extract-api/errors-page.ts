@@ -41,7 +41,7 @@ description: Every exception type thrown by the Poli Page .NET SDK, plus the wir
 
 import ErrorTable from '@preset/components/ErrorTable.astro';
 
-Every failure thrown by the SDK is a \`PoliPageException\` or a subclass. A presigned PDF download that times out before the storage service answers is not wrapped: it surfaces as \`TaskCanceledException\`, not as a \`PoliPageException\` with code \`timeout\` (see [Cancellation](../../production/cancellation/#download-timeouts)). The base type exposes \`Code\`, \`StatusCode\`, \`Message\`, and \`RequestId\`. Compare \`Code\` against the \`PoliPageErrorCode\` constants for fine-grained branching when the subclass is too coarse.
+Every failure thrown by the SDK is a \`PoliPageException\` or a subclass: API errors, network failures, timeouts, a cancellation (\`aborted\`), download failures and constructor validation. The base type exposes \`Code\`, \`StatusCode\`, \`Message\`, and \`RequestId\`. Compare \`Code\` against the \`PoliPageErrorCode\` constants for fine-grained branching when the subclass is too coarse.
 
 ## Exception hierarchy
 
@@ -49,14 +49,16 @@ Every failure thrown by the SDK is a \`PoliPageException\` or a subclass. A pres
 
 ## Wire-level codes
 
-These constants live on the static \`PoliPageErrorCode\` class. The API codes are the exact strings the API returns in its JSON error body (the \`error\` field); \`invalid_options\`, \`timeout\`, \`network_error\`, \`DOWNLOAD_FAILED\` and \`UNKNOWN\` are raised by the SDK itself. \`Code\` carries any other code the API returns, verbatim. The SDK never raises \`aborted\`: cancelling your own \`CancellationToken\` propagates as \`OperationCanceledException\`, not as a \`PoliPageException\`, so catch that instead (see [Cancellation](../../production/cancellation/)).
+These constants live on the static \`PoliPageErrorCode\` class. The API codes are the exact strings the API returns in its JSON error body (the \`error\` field); \`invalid_options\`, \`timeout\`, \`network_error\`, \`aborted\`, \`DOWNLOAD_FAILED\` and \`UNKNOWN\` are raised by the SDK itself; \`aborted\` is a cancellation of your own \`CancellationToken\` (see [Cancellation](../../production/cancellation/)). \`Code\` carries any other code the API returns, verbatim.
+
+\`IsRetryable()\` is \`true\` for \`network_error\`, \`timeout\`, a 5xx and a 429, except \`QUOTA_EXCEEDED\`, \`OVERAGE_CAP_EXCEEDED\` and \`STORAGE_ACCESS_DENIED\`, which waiting cannot fix; it is never \`true\` for \`aborted\` or \`DOWNLOAD_FAILED\`. The SDK retries by the same rule (see [Retries and idempotency](../../production/retries-and-idempotency/)).
 
 \`\`\`csharp
 using PoliPage;
 
 catch (PoliPageException ex) when (ex.Code == PoliPageErrorCode.QuotaExceeded)
 {
-    // bespoke handling.
+    // Not retried by the SDK: the quota lasts until the monthly reset.
 }
 \`\`\`
 

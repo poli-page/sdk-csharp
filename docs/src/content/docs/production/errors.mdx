@@ -5,11 +5,11 @@ description: How the Poli Page .NET SDK surfaces failures and how to handle each
 
 import ErrorTable from '@preset/components/ErrorTable.astro';
 
-Every failure thrown by the SDK is a `PoliPageException` or a subclass. Catch the subclass for targeted handling; catch the base type to handle every SDK error in one place. A presigned PDF download that times out before the storage service answers is not wrapped: it surfaces as `TaskCanceledException`, not as a `PoliPageException` with code `timeout` (see [Cancellation](../cancellation/#download-timeouts)).
+Every failure thrown by the SDK is a `PoliPageException` or a subclass: API errors, network failures, timeouts, a cancellation (`aborted`), download failures and constructor validation. Catch the subclass for targeted handling; catch the base type to handle every SDK error in one place.
 
 ## The exception hierarchy
 
-`PoliPageException` exposes four public properties: `Code` (a `PoliPageErrorCode` constant), `StatusCode` (HTTP status, `0` for network failures), `Message`, and `RequestId` (server-assigned id, `null` when no response was received).
+`PoliPageException` exposes four public properties: `Code` (a `PoliPageErrorCode` constant), `StatusCode` (HTTP status, `0` for network failures), `Message`, and `RequestId` (the `X-Request-Id` of the API's answer, `null` when no response was received). The underlying exception, when there is one (the `HttpRequestException` of a network failure, the `OperationCanceledException` of a cancellation), is the `InnerException`.
 
 ```csharp
 using PoliPage;
@@ -35,11 +35,11 @@ catch (PoliPageException ex)
   { code: 'PoliPageAuthException',             when: 'HTTP 401 or 403 — API key missing, invalid, or lacking permission (e.g. ORGANIZATION_PAYMENT_GRACE, THUMBNAILS_NOT_AVAILABLE).', recovery: 'Check Code; rotate the key in the dashboard or fix the plan or payment.' },
   { code: 'PoliPageNotFoundException',         when: 'HTTP 404 — project, template, or document not found (PROJECT_NOT_FOUND, PROJECT_NOT_IN_ENVIRONMENT, TEMPLATE_NOT_FOUND, DOCUMENT_NOT_FOUND).', recovery: "Verify the slugs and that the project is published in the API key's environment." },
   { code: 'PoliPageGoneException',             when: 'HTTP 410 DOCUMENT_GONE — the document has been deleted.', recovery: 'Not retryable. Treat as a hard failure.' },
-  { code: 'PoliPageValidationException',       when: 'HTTP 400 or 422 — request body failed server-side validation.', recovery: 'Inspect Message for the failing field; fix the input.' },
-  { code: 'PoliPageRateLimitException',        when: 'HTTP 429 — RATE_LIMIT_EXCEEDED, QUOTA_EXCEEDED or OVERAGE_CAP_EXCEEDED. Exposes RetryAfter.', recovery: 'Automatically retried up to MaxRetries. Honour RetryAfter.' },
-  { code: 'PoliPageNetworkException',          when: 'DNS / TCP / TLS failure or transport-level timeout. StatusCode = 0.', recovery: 'Automatically retried up to MaxRetries.' },
-  { code: 'PoliPageDownloadException',         when: 'Presigned URL download from storage failed (commonly URL expiry).', recovery: 'Call Documents.GetAsync(id) to refresh the URL.' },
-  { code: 'PoliPageException',                 when: 'Any other API failure, including per-request timeout (Code == Timeout).', recovery: 'Inspect Code and StatusCode to decide.' },
+  { code: 'PoliPageValidationException',       when: 'HTTP 400 or 422 — request body failed server-side validation, or the template failed (TEMPLATE_ERROR) or holds an injection attempt (TEMPLATE_UNSAFE).', recovery: 'Inspect Message for the failing field or template; fix the input. Not retried.' },
+  { code: 'PoliPageRateLimitException',        when: 'HTTP 429 — RATE_LIMIT_EXCEEDED, QUOTA_EXCEEDED or OVERAGE_CAP_EXCEEDED. Exposes RetryAfter.', recovery: 'RATE_LIMIT_EXCEEDED is retried up to MaxRetries, honouring Retry-After. QUOTA_EXCEEDED and OVERAGE_CAP_EXCEEDED are not retried: they last until the monthly reset.' },
+  { code: 'PoliPageNetworkException',          when: 'DNS / TCP / TLS failure, or a connection closed before the whole answer arrived (network_error). StatusCode = 0.', recovery: 'Automatically retried up to MaxRetries.' },
+  { code: 'PoliPageDownloadException',         when: 'Presigned URL download failed (DOWNLOAD_FAILED): the storage status (commonly 403 for an expired URL), or none for a network failure or the download client timeout.', recovery: 'Never retried. Call Documents.GetAsync(id) to refresh the URL and download again.' },
+  { code: 'PoliPageException',                 when: 'Any other failure: another API status (STORAGE_ACCESS_DENIED, a 5xx), a timeout (Code == Timeout), a cancellation (Code == Aborted), or invalid options.', recovery: 'Inspect Code and StatusCode, or call IsRetryable(). STORAGE_ACCESS_DENIED is not retried: restore the bucket access.' },
 ]} />
 
 The wire-level error code is also surfaced verbatim through `PoliPageException.Code`. Compare against the `PoliPageErrorCode` constants instead of raw strings:
@@ -47,7 +47,7 @@ The wire-level error code is also surfaced verbatim through `PoliPageException.C
 ```csharp
 catch (PoliPageException ex) when (ex.Code == PoliPageErrorCode.QuotaExceeded)
 {
-    // bespoke handling on top of the SDK's built-in retries.
+    // Not retried by the SDK: the quota lasts until the monthly reset.
 }
 ```
 

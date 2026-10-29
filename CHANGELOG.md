@@ -7,6 +7,118 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Conformance with the Poli Page API contract v1.2.0
+([poli-page/api-contract](https://github.com/poli-page/api-contract)). See
+[MIGRATION.md](MIGRATION.md#from-0100-to-the-next-release-unreleased) for
+the upgrade guide.
+
+### Changed
+
+- **BREAKING**: `QUOTA_EXCEEDED` and `OVERAGE_CAP_EXCEEDED` (429) and
+  `STORAGE_ACCESS_DENIED` (502) are no longer retried, even with a
+  `Retry-After` header, and `IsRetryable()` now returns `false` for them (it
+  returned `true` for any 429 or 5xx). They last until the monthly reset or
+  until the bucket access is restored, so the SDK used to wait up to 30 s per
+  retry for nothing. `RATE_LIMIT_EXCEEDED` and every other 429 and 5xx are
+  still retried.
+- **BREAKING**: `IsRetryable()` is `false` for every `DOWNLOAD_FAILED`,
+  whatever the storage status: it was `true` for a storage 5xx or 429. The
+  SDK never retried the download itself, and still does not.
+- **BREAKING**: cancelling the `CancellationToken` of a call throws
+  `PoliPageException` with `Code == PoliPageErrorCode.Aborted` (message
+  `Request was aborted`, the `OperationCanceledException` as
+  `InnerException`) instead of letting `OperationCanceledException`
+  propagate: during an attempt, during the wait before a retry (at once), and
+  while a PDF is read, from `Render.PdfAsync`, `DocumentDescriptor.DownloadPdfAsync`
+  or the stream of `Render.PdfStreamAsync`. `aborted` is never retried and
+  `OnError` now receives it. `catch (OperationCanceledException)` around an
+  SDK call no longer catches a cancellation; catch `PoliPageException` with
+  `Code == PoliPageErrorCode.Aborted`.
+- **BREAKING**: `RetryEvent.Attempt` is the number of the attempt about to
+  start, as `RequestEvent.Attempt` numbers it: `2` for the first retry (it was
+  `1`).
+- **BREAKING**: `Documents.GetAsync`, `PreviewAsync`, `ThumbnailsAsync` and
+  `DeleteAsync` send an empty or whitespace id to the API, which answers it
+  (an empty id reaches no route: `404 NOT_FOUND`), instead of throwing
+  `ArgumentException`. A `null` id still throws `ArgumentNullException`.
+- **BREAKING**: a timeout of the presigned-URL download (the
+  `DownloadHttpClient`'s `Timeout`) throws `PoliPageDownloadException`
+  (`DOWNLOAD_FAILED`, `Failed to download PDF: network error`, no status, the
+  `TaskCanceledException` as `InnerException`) instead of a raw
+  `TaskCanceledException`. Every download failure is now `DOWNLOAD_FAILED`.
+- SDK error messages are the exact texts of the SDK specification:
+  - `network_error`: `Network request failed` (was `Network error during request.`);
+    the `HttpRequestException` is still the `InnerException`.
+  - `timeout`: `Request timed out after <ms>ms`, the attempt's timeout in
+    milliseconds (was `Request timed out.`). When an injected `HttpClient`'s
+    own, shorter `Timeout` fires first, the message names that bound.
+  - `invalid_options` for a missing key: `apiKey is required` (was
+    `PoliPage: ApiKey is required.`).
+  - `DOWNLOAD_FAILED`: `Failed to download PDF: HTTP <status>` (was
+    `Presigned download failed: HTTP <status>`), and
+    `Failed to download PDF: network error` when no complete answer came
+    back (was `Presigned download failed: network error.`).
+- `Retry-After` is read as integer seconds or an HTTP-date only, clamped to
+  0–30 s. An integer too large for an `int` now clamps to 30 s (it was
+  ignored, and the backoff applied). `PoliPageRateLimitException.RetryAfter`
+  follows the same rule. `Retry-After-Ms` is ignored, as before.
+- An API answer's whole body is read inside its attempt, under
+  `RequestTimeout`. A 2xx answer cut mid-body is a `network_error` and one
+  that stalls a `timeout`, both retried; an error answer whose body fails while
+  it is read is `INTERNAL_ERROR` with the message `HTTP <status>`, its real
+  status and `X-Request-Id`, the read error as `InnerException`, and is
+  retried by its status (a 503 yes, a 400 no). A render whose 2xx answer is cut
+  was already stored by the API, so its retry can store a second document.
+- `OnResponse` fires once the 2xx body is read, and its `DurationMs` covers
+  the body; it never fires for a 2xx whose body failed.
+- `RequestTimeout` bounds each attempt, connection, headers and body
+  together, whatever `HttpClient` you inject, even one whose handler ignores
+  cancellation. The `HttpClient` the SDK creates for API calls, and the
+  `"PoliPage"` client `AddPoliPage` registers, no longer have
+  `HttpClient.Timeout`'s 100 s default, which cut a longer `RequestTimeout`
+  short.
+- The request id of an API error is the `X-Request-Id` header, as the SDK
+  specification defines it; the body's `requestId` is the fallback.
+
+### Fixed
+
+- A GET or DELETE (`Documents.GetAsync`, `PreviewAsync`, `DeleteAsync`) and
+  the presigned download are never sent again behind the SDK's back.
+  SocketsHttpHandler resent a request without content up to three more times
+  when its connection closed before any answer, on a reused keep-alive
+  connection or a fresh one: those sends were not counted by `MaxRetries` nor
+  reported to `OnRequest`, and the download, which the SDK never retries, was
+  retried. Every SDK request now carries content (an empty body,
+  `Content-Length: 0`, on GET and DELETE), so the failure surfaces as
+  `network_error` and goes through the SDK's own retry, or as
+  `DOWNLOAD_FAILED`. A POST (`Render.*`, `Documents.ThumbnailsAsync`) was
+  never resent. Every request is also pinned to HTTP/1.1, even through an
+  injected `HttpClient` whose `DefaultRequestVersion` asks for HTTP/2, where
+  the handler resends a refused or unprocessed stream by itself.
+- A failure while the PDF body is read no longer escapes as the HTTP stack's
+  exception: `Render.PdfAsync`, `DocumentDescriptor.DownloadPdfAsync` and
+  reads of the `Render.PdfStreamAsync` stream throw `DOWNLOAD_FAILED`
+  (`Failed to download PDF: network error`, the read error as
+  `InnerException`), or `aborted` on cancellation.
+- A retry wait is never shorter than its delay: when the timer fires early,
+  the SDK waits again for the rest, on the monotonic clock.
+- Docs: the retries page no longer claims the API deduplicates on
+  `Idempotency-Key`. It does not: the key is stable across the retries of one
+  call, and a render retried after a late 5xx, a `timeout` or a
+  `network_error` can store a second document. The `DownloadHttpClient` docs
+  no longer say the API client is used when it is unset.
+
+### Added
+
+- Known error code `PoliPageErrorCode.TemplateUnsafe` (`TEMPLATE_UNSAFE`,
+  400: the template, a partial or an SVG asset holds an injection attempt;
+  the message names it; not retried), next to `TemplateError`.
+- `tests/PoliPage.Tests/Contract` runs every SDK case of the API contract
+  against a local mock server, with the SDK's own `HttpClient` and through an
+  injected one. CI pins the contract by commit (`poli-page/api-contract`
+  action) and Dependabot proposes each new version. Run it locally with
+  `POLI_CONTRACT=<path to contract.json> dotnet test`.
+
 ## [0.10.0] - 2026-10-27
 
 Breaking: implements the environments contract. A key carries its

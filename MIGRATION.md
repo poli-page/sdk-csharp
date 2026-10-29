@@ -6,6 +6,69 @@ NuGet package. We follow
 package is on 0.x, a breaking change bumps the minor version; from 1.0 on,
 only a major version bump breaks. Every breaking release has an entry here.
 
+## From 0.10.0 to the next release (Unreleased)
+
+The SDK now follows the Poli Page API contract
+([poli-page/api-contract](https://github.com/poli-page/api-contract)): the
+retry rules, the SDK's error messages and caller cancellation are the same in
+every Poli Page SDK. See the [CHANGELOG](CHANGELOG.md#unreleased) for the
+full list.
+
+### Cancellation throws `PoliPageException` with code `aborted`
+
+Cancelling a call's `CancellationToken` no longer lets
+`OperationCanceledException` propagate: the SDK throws a `PoliPageException`
+with `Code == PoliPageErrorCode.Aborted`, the `OperationCanceledException`
+as `InnerException`. `OnError` receives it too.
+
+```csharp
+// 0.10.0
+catch (OperationCanceledException) when (cts.Token.IsCancellationRequested) { /* cancelled */ }
+
+// next release
+catch (PoliPageException ex) when (ex.Code == PoliPageErrorCode.Aborted) { /* cancelled */ }
+```
+
+The same holds while a PDF is read: a cancelled read of the
+`Render.PdfStreamAsync` stream throws `aborted`.
+
+### Quota and storage-access errors are not retried
+
+`QUOTA_EXCEEDED`, `OVERAGE_CAP_EXCEEDED` and `STORAGE_ACCESS_DENIED` surface
+at once, and `IsRetryable()` is `false` for them. Code that requeues a job on
+`IsRetryable()` stops requeueing these: wait for the monthly reset, raise the
+overage cap, or restore the bucket's access. `IsRetryable()` is also `false`
+for every `DOWNLOAD_FAILED`; call `Documents.GetAsync(id)` for a fresh
+presigned URL and download again.
+
+### `RetryEvent.Attempt` counts from the first attempt
+
+`RetryEvent.Attempt` is the attempt about to start: `2` for the first retry,
+`3` for the second, as `RequestEvent.Attempt` numbers them. Subtract 1 for
+the retry number.
+
+### Download failures are all `DOWNLOAD_FAILED`
+
+A timeout of the presigned download (`DownloadHttpClient.Timeout`) throws
+`PoliPageDownloadException` (`DOWNLOAD_FAILED`, no status) instead of
+`TaskCanceledException`; a `catch (TaskCanceledException ex) when
+(ex.InnerException is TimeoutException)` around a render or a download no
+longer matches.
+
+### Messages
+
+Code that matched the SDK's own messages must use the new texts:
+`Network request failed`, `Request timed out after <ms>ms`,
+`Request was aborted`, `apiKey is required`,
+`Failed to download PDF: HTTP <status>` and
+`Failed to download PDF: network error`. Prefer comparing `Code`.
+
+### Empty document ids reach the API
+
+`Documents.*` methods no longer throw `ArgumentException` for an empty or
+whitespace id: the API answers it (`404 NOT_FOUND` for an empty id). Only a
+`null` id throws (`ArgumentNullException`).
+
 ## From 0.9.x to 0.10.0
 
 0.10.0 implements the environments contract. An API key belongs to exactly

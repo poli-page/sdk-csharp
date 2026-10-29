@@ -26,6 +26,23 @@ dotnet test --configuration Release --no-build --logger "trx;LogFileName=test-re
 `.editorconfig` and `Directory.Build.props`. CI fails on any formatting
 or analyzer violation.
 
+## API contract tests
+
+`tests/PoliPage.Tests/Contract` runs the SDK cases of the Poli Page API
+contract ([poli-page/api-contract](https://github.com/poli-page/api-contract))
+against a local mock server. CI runs them on every leg against the pinned
+version (the `poli-page/api-contract` action in `ci.yml` and `release.yml`);
+Dependabot proposes each new version. Locally, download a `contract.json`
+and point `POLI_CONTRACT` at it; without it the suite is skipped:
+
+```bash
+POLI_CONTRACT=/path/to/contract.json dotnet test --filter "Category!=Integration"
+```
+
+`tests/contract-skip.json` maps the case ids allowed to fail to the reason.
+A listed case that passes, or an id the contract does not have, fails the
+run.
+
 ## Integration tests
 
 Integration tests live in `tests/PoliPage.IntegrationTests` and hit the
@@ -66,7 +83,8 @@ Publishing / OIDC) and creates the GitHub Release from the version's
    ```bash
    dotnet format --verify-no-changes
    dotnet build --configuration Release --no-restore -warnaserror
-   dotnet test --configuration Release --no-build --filter "Category!=Integration"
+   POLI_CONTRACT=/path/to/contract.json \
+     dotnet test --configuration Release --no-build --filter "Category!=Integration"
    dotnet pack  --configuration Release --no-build --output ./nupkg
    ```
 6. Inspect the `.nupkg` contents (`unzip -l ./nupkg/PoliPage.X.Y.Z.nupkg`).
