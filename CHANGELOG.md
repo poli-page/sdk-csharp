@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Conformance with the Poli Page API contract v1.2.0
+Conformance with the Poli Page API contract v1.3.0
 ([poli-page/api-contract](https://github.com/poli-page/api-contract)). See
 [MIGRATION.md](MIGRATION.md#from-0100-to-the-next-release-unreleased) for
 the upgrade guide.
