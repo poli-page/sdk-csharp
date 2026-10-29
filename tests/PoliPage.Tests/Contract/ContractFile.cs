@@ -131,6 +131,8 @@ internal sealed class ContractFile
             StringComparer.Ordinal);
         foreach (var id in AppliedNormalizations.Where(id => !normalizations.Contains(id)))
             problems.Add($"normalization {id} is applied here but no longer listed by the contract");
+        foreach (var id in normalizations.Where(id => !AppliedNormalizations.Contains(id)))
+            problems.Add($"the contract lists normalization {id}, which this harness does not apply: implement it");
 
         var sdkCases = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
         var runnable = new List<string>();

@@ -99,6 +99,8 @@ public sealed class NoHiddenResendTests
     {
         // Over HTTP/2, SocketsHttpHandler resends a refused (REFUSED_STREAM) or unprocessed
         // (GOAWAY) request by itself, whatever its content: the SDK never asks for HTTP/2.
+        // A guard, not a control: HttpClient.DefaultRequestVersion never applied to a request
+        // the SDK builds itself, so this also passes without the explicit pin.
         await using var server = new MockServer(origin => [Descriptor(origin), Bytes(200, Pdf, "application/pdf")]);
         var seen = new List<(Version Version, HttpVersionPolicy Policy)>();
         using var http = new HttpClient(new CapturingHandler(seen, new SocketsHttpHandler()))

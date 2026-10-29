@@ -58,8 +58,10 @@ internal static class SdkErrors
     /// <summary>
     /// The failures an HTTP send or a body read can raise when no complete answer came
     /// back: a connection, DNS or TLS failure, a connection cut mid-body, or a cancellation
-    /// (the caller's token, an SDK timeout, or the HttpClient's own timeout).
+    /// (the caller's token, an SDK timeout, or the HttpClient's own timeout). An
+    /// <see cref="ObjectDisposedException"/> (a disposed HttpClient) is a programming error,
+    /// not a network failure, and propagates unchanged.
     /// </summary>
     internal static bool IsTransportFailure(Exception exception)
-        => exception is HttpRequestException or IOException or OperationCanceledException or ObjectDisposedException;
+        => exception is HttpRequestException or IOException or OperationCanceledException;
 }

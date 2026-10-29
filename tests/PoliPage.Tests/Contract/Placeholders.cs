@@ -26,10 +26,11 @@ internal static partial class Placeholders
             var date = HttpDate().Match(name);
             if (date.Success)
             {
-                // An HTTP-date has whole seconds: round to the nearest one.
+                // An HTTP-date has whole seconds: round up, so the date is never less than N
+                // seconds ahead.
                 var at = DateTimeOffset.UtcNow.AddSeconds(int.Parse(date.Groups[1].Value, CultureInfo.InvariantCulture));
                 var rounded = new DateTimeOffset(
-                    (at.UtcTicks + (TimeSpan.TicksPerSecond / 2)) / TimeSpan.TicksPerSecond * TimeSpan.TicksPerSecond,
+                    (at.UtcTicks + TimeSpan.TicksPerSecond - 1) / TimeSpan.TicksPerSecond * TimeSpan.TicksPerSecond,
                     TimeSpan.Zero);
                 return rounded.ToString("r", CultureInfo.InvariantCulture);
             }
