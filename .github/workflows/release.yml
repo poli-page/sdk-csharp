@@ -52,7 +52,15 @@ jobs:
       - name: Build (Release, multi-target)
         run: dotnet build --configuration Release --no-restore -warnaserror
 
-      - name: Test (unit only)
+      # The pinned API contract (contract.json) for tests/PoliPage.Tests/Contract, so a
+      # tagged build runs the contract suite like CI does.
+      - name: API contract
+        id: contract
+        uses: poli-page/api-contract@0eba96c1ecf9a28b7e259f444f3ca5b7c059d5fd # v1.3.0
+
+      - name: Test (unit and contract)
+        env:
+          POLI_CONTRACT: ${{ steps.contract.outputs.path }}
         run: |
           dotnet test --configuration Release --no-build \
             --filter "Category!=Integration" \

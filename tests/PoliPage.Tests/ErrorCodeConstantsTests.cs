@@ -122,6 +122,7 @@ public sealed class ErrorCodeConstantsTests
             ["OrganizationMigrating"] = "ORGANIZATION_MIGRATING",
             ["ProjectNotFound"] = "PROJECT_NOT_FOUND",
             ["TemplateError"] = "TEMPLATE_ERROR",
+            ["TemplateUnsafe"] = "TEMPLATE_UNSAFE",
             ["ThumbnailsNotAvailable"] = "THUMBNAILS_NOT_AVAILABLE",
             ["RateLimitExceeded"] = "RATE_LIMIT_EXCEEDED",
             ["RenderBodyTooLarge"] = "RENDER_BODY_TOO_LARGE",

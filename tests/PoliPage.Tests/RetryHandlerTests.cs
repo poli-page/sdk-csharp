@@ -313,17 +313,14 @@ public sealed class RetryHandlerTests
     {
         // Why: WireMock's scenario state machine does not reliably transition when a
         // client disconnects mid-response (which is exactly what a timeout looks like).
-        // Use a synthetic ThrowOnceHandler that throws TaskCanceledException on the
-        // first send (simulating our timeout CTS firing) and forwards subsequent sends
-        // to WireMock unchanged.
+        // Use a HangOnceHandler whose first send never answers, so the SDK's per-attempt
+        // timeout fires, and which forwards later sends to WireMock unchanged.
         using var server = WireMockServer.Start();
         StubRenderJsonAndStorage(server);
 
-        var handler = new ThrowOnceHandler(
-            inner: new HttpClientHandler(),
-            throwCount: 1,
-            onThrow: () => new TaskCanceledException("simulated per-attempt timeout"));
+        var handler = new HangOnceHandler(inner: new HttpClientHandler());
         using var httpClient = new HttpClient(handler);
+        var retries = new List<RetryEvent>();
 
         var options = new PoliPageClientOptions
         {
@@ -331,14 +328,17 @@ public sealed class RetryHandlerTests
             BaseUrl = new Uri(server.Url!),
             MaxRetries = 2,
             RetryDelay = TimeSpan.FromMilliseconds(10),
+            RequestTimeout = TimeSpan.FromMilliseconds(200),
             HttpClient = httpClient,
+            OnRetry = retries.Add,
         };
         using var client = new PoliPageClient(options);
 
         var result = await client.Render.PdfAsync(DefaultInput());
 
+        retries.Should().ContainSingle().Which.Reason.Should().Be("Request timed out after 200ms");
         result.Should().NotBeEmpty();
-        handler.TotalCalls.Should().Be(2, "one timeout-throw + one success");
+        handler.TotalCalls.Should().Be(2, "one timeout + one success");
     }
 
     // ------------------------------------------------------------------ //
@@ -474,7 +474,7 @@ public sealed class RetryHandlerTests
                    .WithHeader("Retry-After", "120"));
 
         var act = async () => await harness.Client.Render.PdfAsync(DefaultInput(), cancellationToken: cts.Token);
-        await act.Should().ThrowAsync<OperationCanceledException>();
+        (await act.Should().ThrowAsync<PoliPageException>()).Which.Code.Should().Be(PoliPageErrorCode.Aborted);
 
         capturedDelay.Should().Be(TimeSpan.FromSeconds(30), "Retry-After: 120 must be capped at MaxDelay (30s)");
     }
@@ -527,9 +527,9 @@ public sealed class RetryHandlerTests
 
         events.Should().HaveCount(2);
 
-        // Attempt numbers are 1-based.
-        events[0].Attempt.Should().Be(1);
-        events[1].Attempt.Should().Be(2);
+        // The attempt about to start: 2 for the first retry (spec §9.2).
+        events[0].Attempt.Should().Be(2);
+        events[1].Attempt.Should().Be(3);
 
         // Status code should be 503 (the HTTP failure).
         events[0].StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
@@ -580,11 +580,12 @@ public sealed class RetryHandlerTests
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
         var act = async () => await RenderAsync(harness.Client, cts.Token);
 
-        await act.Should().ThrowAsync<OperationCanceledException>();
+        var thrown = await act.Should().ThrowAsync<PoliPageException>();
+        thrown.Which.Code.Should().Be(PoliPageErrorCode.Aborted);
 
         // The semantic is "caller cancel stops the loop immediately, no retry happens."
-        // The OperationCanceledException assertion above already proves no retry occurred
-        // (a retry would have surfaced PoliPageException). We can't reliably assert
+        // The `aborted` code above already proves no retry occurred (a retry would have
+        // surfaced the 200 or another code). We can't reliably assert
         // server.LogEntries.Count because WireMock may or may not log requests that
         // were aborted mid-flight; that's an implementation detail of the mock, not
         // a property of our retry logic.
@@ -635,6 +636,30 @@ internal sealed class ThrowOnceHandler : DelegatingHandler
         var callNumber = System.Threading.Interlocked.Increment(ref _calls);
         if (callNumber <= _throwCount)
             throw _onThrow();
+        return await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+}
+
+/// <summary>
+/// A <see cref="DelegatingHandler"/> whose first send never answers (until it is
+/// cancelled), then forwards to the inner handler normally.
+/// </summary>
+internal sealed class HangOnceHandler : DelegatingHandler
+{
+    private int _calls;
+
+    public int TotalCalls => _calls;
+
+    internal HangOnceHandler(HttpMessageHandler inner)
+        : base(inner)
+    {
+    }
+
+    protected override async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (System.Threading.Interlocked.Increment(ref _calls) == 1)
+            await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
         return await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
     }
 }

@@ -206,7 +206,7 @@ public sealed class HookEventsTests
     }
 
     [Fact]
-    public async Task OnError_does_not_fire_on_caller_cancellation()
+    public async Task OnError_fires_once_with_aborted_on_caller_cancellation()
     {
         using var server = WireMockServer.Start();
         server.Given(Request.Create().WithPath("/v1/render").UsingPost())
@@ -214,23 +214,24 @@ public sealed class HookEventsTests
                   .WithHeader("Content-Type", "application/json")
                   .WithBody(SampleDescriptorJson));
 
-        var errorFired = false;
+        var errors = new List<Exception>();
         using var client = new PoliPageClient(new PoliPageClientOptions
         {
             ApiKey = "pp_test",
             BaseUrl = new Uri(server.Url!),
             MaxRetries = 0,
-            OnError = _ => errorFired = true,
+            OnError = errors.Add,
         });
 
-        // Issue the request with a pre-cancelled token — caller cancellation is NOT an SDK error.
+        // A pre-cancelled token: the SDK raises `aborted` (spec §8.3) and OnError sees it.
         using var cts = new System.Threading.CancellationTokenSource();
         cts.Cancel();
 
         var act = async () => await client.Render.DocumentAsync(Input(), cancellationToken: cts.Token);
 
-        await act.Should().ThrowAsync<OperationCanceledException>();
-        errorFired.Should().BeFalse("caller cancellation is not an SDK error and must not fire OnError");
+        var thrown = await act.Should().ThrowAsync<PoliPageException>();
+        thrown.Which.Code.Should().Be(PoliPageErrorCode.Aborted);
+        errors.Should().ContainSingle().Which.Should().BeSameAs(thrown.Which);
     }
 
     [Fact]

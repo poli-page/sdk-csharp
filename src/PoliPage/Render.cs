@@ -47,7 +47,11 @@ public sealed class Render
     /// <exception cref="PoliPageRateLimitException">The API returned 429; <see cref="PoliPageRateLimitException.RetryAfter"/> exposes the server's retry hint.</exception>
     /// <exception cref="PoliPageNetworkException">DNS, TCP, or TLS failure before the response was received.</exception>
     /// <exception cref="PoliPageException">Any other API failure, or a per-request timeout (<see cref="PoliPageErrorCode.Timeout"/>).</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    /// <exception cref="PoliPageException">
+    /// With <c>Code == PoliPageErrorCode.Aborted</c> when <paramref name="cancellationToken"/> was
+    /// cancelled; the original <see cref="OperationCanceledException"/> is the
+    /// <see cref="Exception.InnerException"/>.
+    /// </exception>
     public async Task<byte[]> PdfAsync(
         RenderInput input,
         RequestOptions? options = null,
@@ -77,7 +81,11 @@ public sealed class Render
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="input"/> is <see langword="null"/>.</exception>
     /// <exception cref="PoliPageException">See <see cref="PdfAsync"/> for the full mapping.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    /// <exception cref="PoliPageException">
+    /// With <c>Code == PoliPageErrorCode.Aborted</c> when <paramref name="cancellationToken"/> was
+    /// cancelled; the original <see cref="OperationCanceledException"/> is the
+    /// <see cref="Exception.InnerException"/>.
+    /// </exception>
     public async Task<Stream> PdfStreamAsync(
         RenderInput input,
         RequestOptions? options = null,
@@ -105,7 +113,11 @@ public sealed class Render
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="input"/> is <see langword="null"/>.</exception>
     /// <exception cref="PoliPageException">See <see cref="PdfAsync"/> for the full mapping.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    /// <exception cref="PoliPageException">
+    /// With <c>Code == PoliPageErrorCode.Aborted</c> when <paramref name="cancellationToken"/> was
+    /// cancelled; the original <see cref="OperationCanceledException"/> is the
+    /// <see cref="Exception.InnerException"/>.
+    /// </exception>
     public Task<DocumentDescriptor> DocumentAsync(
         RenderInput input,
         RequestOptions? options = null,
@@ -134,17 +146,16 @@ public sealed class Render
             idempotencyKey,
             options,
             "application/json",
-            HttpCompletionOption.ResponseContentRead,
             cancellationToken).ConfigureAwait(false);
 
-        var descriptor = await ParseDescriptorAsync(response, cancellationToken).ConfigureAwait(false);
+        var descriptor = await ParseDescriptorAsync(response).ConfigureAwait(false);
         return descriptor with { Downloader = _downloader };
     }
 
-    private static async Task<DocumentDescriptor> ParseDescriptorAsync(
-        HttpResponseMessage response, CancellationToken cancellationToken)
+    private static async Task<DocumentDescriptor> ParseDescriptorAsync(HttpResponseMessage response)
     {
-        var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        // The transport already read the body into memory: no I/O, nothing to cancel.
+        var json = await response.Content.ReadAsStringAsync(CancellationToken.None).ConfigureAwait(false);
         // Why: Phase 8 will replace this with JsonSerializerContext (source-gen). Until then,
         // suppress IL2026/IL3050 — dynamic deserialization is only a concern for AOT-published
         // apps, not the JIT runtime the SDK currently targets.

@@ -571,6 +571,7 @@ public sealed class ErrorMappingTests
         ex.Which.GetType().Should().Be<PoliPageException>(
             "timeout must surface as PoliPageException, not as OperationCanceledException");
         ex.Which.Code.Should().Be(PoliPageErrorCode.Timeout);
+        ex.Which.Message.Should().Be("Request timed out after 150ms");
         ex.Which.StatusCode.Should().Be(0);
     }
 }

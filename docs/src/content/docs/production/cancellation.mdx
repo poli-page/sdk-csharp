@@ -3,7 +3,7 @@ title: Cancellation
 description: How to cancel in-flight requests with CancellationToken.
 ---
 
-Every async method on the SDK accepts a `CancellationToken`. Cancelling the token aborts the underlying HTTP call; the SDK throws `OperationCanceledException` (or its `TaskCanceledException` subclass) so callers can use the standard BCL pattern to bail out.
+Every async method on the SDK accepts a `CancellationToken`. Cancelling the token aborts the underlying HTTP call, and the SDK throws a `PoliPageException` with `Code == PoliPageErrorCode.Aborted` (message `Request was aborted`, the `OperationCanceledException` as `InnerException`). A cancellation is never retried.
 
 ## Pass a CancellationToken
 
@@ -21,40 +21,66 @@ try
         },
         cancellationToken: cts.Token);
 }
-catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+catch (PoliPageException ex) when (ex.Code == PoliPageErrorCode.Aborted)
 {
     Console.WriteLine("cancelled by caller");
 }
 ```
 
+The cancellation takes effect at once wherever the call is: during an attempt, during the wait before a retry, or while the PDF is read. A read of the `Render.PdfStreamAsync` stream that is cancelled, through the call's token or the read's own, throws `aborted` too. `OnError` receives the `aborted` error like any other error the SDK throws.
+
 ## Cancellation vs request timeout
 
-`PoliPageClientOptions.RequestTimeout` is enforced internally with a linked `CancellationTokenSource`. Your caller-supplied token is composed with the internal one — whichever fires first wins, so caller cancellation always wins on or before the SDK timeout.
+`PoliPageClientOptions.RequestTimeout` (or `RequestOptions.RequestTimeout` per call) bounds each API attempt: the connection, the answer's headers and its whole body. Your token is composed with it — whichever fires first wins.
 
-When the per-request timeout fires, the SDK throws `PoliPageException` with `Code == PoliPageErrorCode.Timeout` (so it can be retried per the [retry policy](../retries-and-idempotency/)). When the caller cancels, the SDK lets `OperationCanceledException` propagate — caller-aborted operations are never retried.
+When an attempt times out, the SDK records a `timeout` (`Request timed out after <ms>ms`) and retries it per the [retry policy](../retries-and-idempotency/); once the retries are exhausted, it throws `PoliPageException` with `Code == PoliPageErrorCode.Timeout`. The timeout holds whatever `HttpClient` you inject. If that client's own `HttpClient.Timeout` is shorter, it fires first and the message names that bound.
 
 ## Download timeouts
 
-`RequestTimeout` bounds the API calls only. `Render.PdfAsync`, `Render.PdfStreamAsync`, `RenderToFileAsync` and `DocumentDescriptor.DownloadPdfAsync` then fetch the PDF from its presigned URL on a separate download client (`PoliPageClientOptions.DownloadHttpClient`), which is bounded by that client's `HttpClient.Timeout`: 100 seconds for the client the SDK creates when you pass none.
+`RequestTimeout` bounds the API calls only. `Render.PdfAsync`, `Render.PdfStreamAsync`, `RenderToFileAsync` and `DocumentDescriptor.DownloadPdfAsync` then fetch the PDF from its presigned URL on a separate download client (`PoliPageClientOptions.DownloadHttpClient`). That client's `HttpClient.Timeout` (100 seconds for the client the SDK creates when you pass none) bounds only the wait for the storage's response headers.
 
-When that timeout fires before the storage service sends its response headers, the SDK does not map it to `PoliPageErrorCode.Timeout`: it throws `TaskCanceledException` (with a `TimeoutException` as `InnerException`) even though your token was not cancelled, and does not retry. `catch (PoliPageException)` does not catch it. Tell it apart from your own cancellation by checking your token:
+When that timeout fires, the SDK throws `PoliPageDownloadException` with `Code == PoliPageErrorCode.DownloadFailed` and the message `Failed to download PDF: network error` (no status, the `TaskCanceledException` as `InnerException`). The download is never retried.
+
+Once the headers have arrived, reading the PDF body has no SDK time bound: a storage answer that stalls mid-body waits until your `CancellationToken` fires. Pass one (for example a `CancellationTokenSource` with a timeout) to bound the whole download.
 
 ```csharp
 try
 {
     byte[] pdf = await client.Render.PdfAsync(input, cancellationToken: cts.Token);
 }
-catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+catch (PoliPageException ex) when (ex.Code == PoliPageErrorCode.Aborted)
 {
     // Caller cancellation — never retried.
 }
-catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+catch (PoliPageDownloadException ex)
 {
-    // The presigned PDF download timed out; the SDK did not retry it.
+    // The presigned PDF download failed (timeout, network or storage status).
 }
 catch (PoliPageException ex) when (ex.Code == PoliPageErrorCode.Timeout)
 {
     // An API call timed out after its retries.
+}
+```
+
+## What `aborted` changes for .NET code
+
+Because a cancellation surfaces as a `PoliPageException`, not as an `OperationCanceledException`:
+
+- A cancelled SDK task ends **Faulted**, not **Canceled**: `task.IsCanceled` is `false`, and code that relies on cancellation semantics (`Task.WhenAll`, `Parallel.ForEachAsync`, `catch (OperationCanceledException)`) sees an ordinary failure.
+- ASP.NET Core's exception handler treats an `OperationCanceledException` raised after `HttpContext.RequestAborted` fired as a client disconnect and logs it quietly. A `PoliPageException` is logged as an unhandled error instead, once per disconnect.
+- Recognise a cancellation by `Code == PoliPageErrorCode.Aborted`, not by the inner exception's token: the `InnerException`'s `CancellationToken` is the SDK's per-attempt token, not yours.
+
+Where you want the standard behaviour back, catch `aborted` and rethrow an `OperationCanceledException` that carries your token:
+
+```csharp
+try
+{
+    return await client.Render.PdfAsync(input, cancellationToken: cancellationToken);
+}
+catch (PoliPageException ex) when (ex.Code == PoliPageErrorCode.Aborted)
+{
+    // The task now ends Canceled, and ASP.NET Core sees a client abort.
+    throw new OperationCanceledException(ex.Message, ex, cancellationToken);
 }
 ```
 
@@ -85,7 +111,7 @@ try
         },
         cancellationToken: cts.Token);
 }
-catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+catch (PoliPageException ex) when (ex.Code == PoliPageErrorCode.Aborted)
 {
     // Caller cancellation — never retried.
 }

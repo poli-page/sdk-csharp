@@ -23,6 +23,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The API contract skip list (Contract/ContractFile.cs reads it next to the tests). -->
+    <None Include="..\contract-skip.json" Link="contract-skip.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\PoliPage\PoliPage.csproj" />
   </ItemGroup>
 
