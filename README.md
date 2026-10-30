@@ -24,7 +24,7 @@ Or add the reference directly to your `.csproj`:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="PoliPage" Version="0.10.0" />
+  <PackageReference Include="PoliPage" Version="0.11.0" />
 </ItemGroup>
 ```
 

@@ -5,9 +5,9 @@ description: Upgrade guides for moving between breaking releases of the .NET SDK
 
 This page tracks breaking changes between releases of the `PoliPage` NuGet package. While the package is on 0.x, a breaking change bumps the minor version. For the full per-release diff, see the [changelog](../changelog/).
 
-## From 0.10.0 to the next release (unreleased)
+## From 0.10.0 to 0.11.0
 
-The SDK follows the Poli Page API contract: the retry rules, the SDK's error messages and caller cancellation are the same in every Poli Page SDK. The full guide is in [`MIGRATION.md` in the repo](https://github.com/poli-page/sdk-csharp/blob/main/MIGRATION.md#from-0100-to-the-next-release-unreleased).
+The SDK follows the Poli Page API contract: the retry rules, the SDK's error messages and caller cancellation are the same in every Poli Page SDK. The full guide is in [`MIGRATION.md` in the repo](https://github.com/poli-page/sdk-csharp/blob/main/MIGRATION.md#from-0100-to-0110).
 
 - Cancelling a call's `CancellationToken` throws `PoliPageException` with `Code == PoliPageErrorCode.Aborted` instead of `OperationCanceledException`, which is its `InnerException`. See [Cancellation](../../production/cancellation/).
 - `QUOTA_EXCEEDED`, `OVERAGE_CAP_EXCEEDED` and `STORAGE_ACCESS_DENIED` are not retried, and `IsRetryable()` is `false` for them and for every `DOWNLOAD_FAILED`.

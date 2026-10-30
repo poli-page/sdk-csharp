@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-30
+
 Conformance with the Poli Page API contract v1.3.0
 ([poli-page/api-contract](https://github.com/poli-page/api-contract)). See
-[MIGRATION.md](MIGRATION.md#from-0100-to-the-next-release-unreleased) for
+[MIGRATION.md](MIGRATION.md#from-0100-to-0110) for
 the upgrade guide.
 
 ### Changed
@@ -279,7 +281,8 @@ First public release of the Poli Page .NET SDK. Targets `net8.0` and
 - Deterministic build, embedded symbols (PDBs inside the assembly), and
   Source Link via `Microsoft.SourceLink.GitHub`.
 
-[Unreleased]: https://github.com/poli-page/sdk-csharp/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/poli-page/sdk-csharp/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/poli-page/sdk-csharp/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/poli-page/sdk-csharp/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/poli-page/sdk-csharp/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/poli-page/sdk-csharp/releases/tag/v0.9.0
