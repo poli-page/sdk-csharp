@@ -6,12 +6,12 @@ NuGet package. We follow
 package is on 0.x, a breaking change bumps the minor version; from 1.0 on,
 only a major version bump breaks. Every breaking release has an entry here.
 
-## From 0.10.0 to the next release (Unreleased)
+## From 0.10.0 to 0.11.0
 
 The SDK now follows the Poli Page API contract
 ([poli-page/api-contract](https://github.com/poli-page/api-contract)): the
 retry rules, the SDK's error messages and caller cancellation are the same in
-every Poli Page SDK. See the [CHANGELOG](CHANGELOG.md#unreleased) for the
+every Poli Page SDK. See the [CHANGELOG](CHANGELOG.md#0110---2026-10-30) for the
 full list.
 
 ### Cancellation throws `PoliPageException` with code `aborted`
@@ -25,7 +25,7 @@ as `InnerException`. `OnError` receives it too.
 // 0.10.0
 catch (OperationCanceledException) when (cts.Token.IsCancellationRequested) { /* cancelled */ }
 
-// next release
+// 0.11.0
 catch (PoliPageException ex) when (ex.Code == PoliPageErrorCode.Aborted) { /* cancelled */ }
 ```
 

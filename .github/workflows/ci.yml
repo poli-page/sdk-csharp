@@ -112,8 +112,7 @@ jobs:
           fail_ci_if_error: false
           use_oidc: true
 
-  # One check that sums up the PR jobs: the name the `main` ruleset requires for merges
-  # (the poli-page auto loop's gate waits for a check named `ci`).
+  # One check that sums up the PR jobs (the aggregate gate the branch ruleset requires for merges).
   ci:
     if: always()
     needs: [test]
