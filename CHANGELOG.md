@@ -267,8 +267,8 @@ First public release of the Poli Page .NET SDK. Targets `net8.0` and
 
 ### Build & supply chain
 
-- Targets: `net8.0` (LTS) and `net10.0` (LTS). `netstandard2.0` is an
-  open question tracked in `sdk-csharp-plan.md` §18.
+- Targets: `net8.0` (LTS) and `net10.0` (LTS). `netstandard2.0` is not
+  targeted for now.
 - Zero non-Microsoft runtime dependencies — all runtime references are
   Microsoft / BCL-adjacent: `Microsoft.Extensions.Logging.Abstractions`,
   `Microsoft.Extensions.Options`, `Microsoft.Extensions.Http`,
