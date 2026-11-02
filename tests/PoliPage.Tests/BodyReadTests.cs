@@ -181,8 +181,10 @@ public sealed class BodyReadTests
     }
 
     [Fact]
-    public async Task A_download_client_timeout_is_DOWNLOAD_FAILED()
+    public async Task A_download_client_timeout_is_a_DOWNLOAD_FAILED_timeout()
     {
+        // The injected download client's own Timeout fires before the SDK's (5 s): a
+        // timeout too, reported as one.
         await using var server = new MockServer(origin => [Descriptor(origin), MockStep.Hang]);
         using var download = new HttpClient { Timeout = TimeSpan.FromMilliseconds(200) };
         using var client = new PoliPageClient(Options(server) with { DownloadHttpClient = download });
@@ -190,7 +192,8 @@ public sealed class BodyReadTests
         var act = () => client.Render.PdfAsync(Input);
 
         var thrown = await act.Should().ThrowAsync<PoliPageDownloadException>();
-        thrown.Which.Message.Should().Be("Failed to download PDF: network error");
+        thrown.Which.Message.Should().Be("Failed to download PDF: timeout");
+        thrown.Which.StatusCode.Should().Be(0);
         thrown.Which.InnerException.Should().BeAssignableTo<OperationCanceledException>();
     }
 

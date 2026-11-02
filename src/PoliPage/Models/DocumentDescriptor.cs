@@ -84,7 +84,9 @@ public sealed record DocumentDescriptor
 
     /// <summary>
     /// Fetches the PDF bytes from <see cref="PresignedPdfUrl"/> via the SDK's
-    /// dedicated, header-less download transport.
+    /// dedicated, header-less download transport. The client's
+    /// <see cref="PoliPageClientOptions.RequestTimeout"/> bounds the whole download. It is
+    /// never retried.
     /// </summary>
     /// <param name="cancellationToken">Token to cancel the download.</param>
     /// <returns>The raw PDF bytes.</returns>
@@ -94,7 +96,8 @@ public sealed record DocumentDescriptor
     /// </exception>
     /// <exception cref="PoliPageDownloadException">
     /// The presigned URL fetch failed (<c>DOWNLOAD_FAILED</c>): a non-2xx storage status, or no
-    /// status for a network failure or the download client's timeout before the headers.
+    /// status for a network failure, a body short of its <c>Content-Length</c>, or a download
+    /// that outlasted the timeout (<c>Failed to download PDF: timeout</c>).
     /// </exception>
     /// <exception cref="PoliPageException">
     /// With <c>Code == PoliPageErrorCode.Aborted</c> when <paramref name="cancellationToken"/> was

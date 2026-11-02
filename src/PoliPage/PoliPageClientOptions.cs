@@ -45,8 +45,13 @@ public sealed record PoliPageClientOptions
     /// Timeout of each API attempt: the connection, the answer's headers and its whole body
     /// together. Each retry gets its own. It applies whatever <see cref="HttpClient"/> you
     /// inject (should that client's own <see cref="System.Net.Http.HttpClient.Timeout"/> be
-    /// shorter, that one fires first and the timeout error names it). It does not apply to the
-    /// presigned PDF download (see <see cref="DownloadHttpClient"/>).
+    /// shorter, that one fires first and the timeout error names it). It also bounds the
+    /// presigned PDF download: the whole download for <see cref="Render.PdfAsync"/> and
+    /// <see cref="DocumentDescriptor.DownloadPdfAsync"/>, and for
+    /// <see cref="Render.PdfStreamAsync"/> the wait for the storage's answer and each read of
+    /// the stream (an idle timeout, not a total). Past it, the download throws
+    /// <see cref="PoliPageDownloadException"/> with the message
+    /// <c>Failed to download PDF: timeout</c>.
     /// Must be greater than <see cref="TimeSpan.Zero"/>. Defaults to 60 seconds.
     /// </summary>
     public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromSeconds(60);
@@ -64,13 +69,13 @@ public sealed record PoliPageClientOptions
     /// <summary>
     /// An externally-managed <see cref="System.Net.Http.HttpClient"/> for the presigned PDF
     /// downloads (<see cref="Render.PdfAsync"/>, <see cref="Render.PdfStreamAsync"/>,
-    /// <see cref="DocumentDescriptor.DownloadPdfAsync"/>). Its own
-    /// <see cref="System.Net.Http.HttpClient.Timeout"/> bounds only the wait for the storage's
-    /// response headers (it then throws <c>DOWNLOAD_FAILED</c>); once the headers have arrived,
-    /// reading the PDF body has no SDK time bound, and only the call's
-    /// <see cref="CancellationToken"/> stops it. When <see langword="null"/>, the client creates
-    /// and owns a bare instance (100 s timeout), separate from <see cref="HttpClient"/>, so no
-    /// API header reaches the storage.
+    /// <see cref="DocumentDescriptor.DownloadPdfAsync"/>). <see cref="RequestTimeout"/> bounds
+    /// these downloads whatever this client's handler does; should this client's own
+    /// <see cref="System.Net.Http.HttpClient.Timeout"/> be shorter, it fires first for the wait
+    /// for the storage's response headers, with the same <c>DOWNLOAD_FAILED</c> timeout error.
+    /// When <see langword="null"/>, the client creates and owns a bare instance with no timeout
+    /// of its own, separate from <see cref="HttpClient"/>, so no API header reaches the
+    /// storage.
     /// </summary>
     public System.Net.Http.HttpClient? DownloadHttpClient { get; set; }
 

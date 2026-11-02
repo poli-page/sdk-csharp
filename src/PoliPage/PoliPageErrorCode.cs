@@ -171,9 +171,24 @@ public static class PoliPageErrorCode
 
     /// <summary>
     /// Downloading the PDF from its presigned URL failed: a non-2xx storage answer (its
-    /// status is the storage's) or no complete answer (no status). Never retried.
+    /// status is the storage's), no complete answer, or no answer within the timeout (no
+    /// status). Never retried.
     /// </summary>
     public const string DownloadFailed = "DOWNLOAD_FAILED";
+
+    /// <summary>
+    /// The API answered a 2xx whose body is not JSON to a call that expects JSON, usually a
+    /// page from a proxy or a captive portal between the SDK and the API. The exception keeps
+    /// that 2xx as its status. Never retried.
+    /// </summary>
+    public const string InvalidResponse = "invalid_response";
+
+    /// <summary>
+    /// <see cref="PoliPageClient.RenderToFileAsync"/> could not write the file: creating its
+    /// directory, opening, writing or moving it into place. No status; the file system error
+    /// is the <see cref="Exception.InnerException"/>. Never retried.
+    /// </summary>
+    public const string IoError = "io_error";
 
     /// <summary>
     /// Fallback for SDK-internal errors that have no more specific code, such as a

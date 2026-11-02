@@ -114,8 +114,10 @@ public class PoliPageException : Exception
     /// timeout, a 5xx or a 429, except <c>QUOTA_EXCEEDED</c>, <c>OVERAGE_CAP_EXCEEDED</c>
     /// (429) and <c>STORAGE_ACCESS_DENIED</c> (502), which waiting cannot fix: the quota
     /// lasts until the monthly reset and the bucket access until the customer restores it.
-    /// Caller-aborted requests (<c>code: aborted</c>) and failed presigned downloads
-    /// (<c>DOWNLOAD_FAILED</c>, whatever the storage status) are never retryable.
+    /// Caller-aborted requests (<c>code: aborted</c>), 2xx answers whose body is not JSON
+    /// (<c>invalid_response</c>), files that cannot be written (<c>io_error</c>) and failed
+    /// presigned downloads (<c>DOWNLOAD_FAILED</c>, whatever the storage status, a timeout
+    /// included) are never retryable.
     /// </summary>
     /// <remarks>
     /// The SDK applies the same rule to its own retries and has already retried up to
@@ -126,6 +128,8 @@ public class PoliPageException : Exception
     {
         if (string.Equals(Code, PoliPageErrorCode.Aborted, StringComparison.Ordinal)
             || string.Equals(Code, PoliPageErrorCode.DownloadFailed, StringComparison.Ordinal)
+            || string.Equals(Code, PoliPageErrorCode.InvalidResponse, StringComparison.Ordinal)
+            || string.Equals(Code, PoliPageErrorCode.IoError, StringComparison.Ordinal)
             || Internal.SdkErrors.IsNonRetryableCode(Code))
         {
             return false;
@@ -141,23 +145,27 @@ public class PoliPageException : Exception
     }
 
     /// <summary>
-    /// Returns the canonical wire payload for framework integrations:
-    /// <c>{ Code, Message, Status, RequestId }</c>. The
-    /// <see cref="StatusCode"/> property is unchanged for transport
-    /// failures — only the payload surfaces 503/504, so callers that
-    /// inspect <see cref="StatusCode"/> directly are not affected.
+    /// Returns the canonical wire payload for framework integrations, the HTTP body an
+    /// integration answers with. It serializes with exactly the keys <c>code</c>,
+    /// <c>message</c>, <c>status</c> and <c>requestId</c>. Its status is the API status,
+    /// <c>503</c> for <c>network_error</c>, <c>504</c> for <c>timeout</c> and <c>502</c> for
+    /// <c>invalid_response</c>. The <see cref="StatusCode"/> property is unchanged: only the
+    /// payload surfaces 502/503/504, so an <c>invalid_response</c> keeps its real 2xx there.
     /// </summary>
     public PoliPageErrorPayload ToPayload()
         => new(Code, Message, PayloadStatus(), RequestId);
 
     /// <summary>
     /// Resolves the wire status surfaced by <see cref="ToPayload"/>.
-    /// Default: the API status when present, 504 for the bare-base
-    /// timeout shape, otherwise <see langword="null"/>. Subclasses override
+    /// Default: 502 for <c>invalid_response</c> (its own status is a 2xx, which an
+    /// integration must not answer an error with), the API status when present, 504 for the
+    /// bare-base timeout shape, otherwise <see langword="null"/>. Subclasses override
     /// for transport-specific defaults (network → 503).
     /// </summary>
     protected virtual int? PayloadStatus()
     {
+        if (string.Equals(Code, PoliPageErrorCode.InvalidResponse, StringComparison.Ordinal))
+            return 502;
         if (StatusCode != 0)
             return StatusCode;
         return string.Equals(Code, PoliPageErrorCode.Timeout, StringComparison.Ordinal) ? 504 : null;

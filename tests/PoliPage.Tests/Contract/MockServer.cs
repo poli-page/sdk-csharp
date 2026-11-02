@@ -9,8 +9,9 @@ namespace PoliPage.Tests.Contract;
 /// <summary>
 /// One answer of the mock: an HTTP answer, or a fault. The contract's faults are
 /// <c>drop</c> (close the connection without an answer) and <c>hang</c> (never answer). The
-/// unit tests add two that send this step's answer badly: <c>cut</c> (the head and half
-/// the body, then close) and <c>drip</c> (the head, then the body one byte every 50 ms).
+/// unit tests add three that send this step's answer badly: <c>cut</c> (the head and half
+/// the body, then close), <c>drip</c> (the head, then the body one byte every 50 ms) and
+/// <c>stall</c> (the head and half the body, then nothing until the client gives up).
 /// </summary>
 internal sealed record MockStep(
     int Status,
@@ -25,6 +26,8 @@ internal sealed record MockStep(
     public MockStep Cut() => this with { Fault = "cut" };
 
     public MockStep Drip() => this with { Fault = "drip" };
+
+    public MockStep Stall() => this with { Fault = "stall" };
 }
 
 /// <summary>A request the mock received.</summary>
@@ -228,6 +231,12 @@ internal sealed class MockServer : IAsyncDisposable
                 await WriteHeadAsync(stream, step);
                 await stream.WriteAsync(step.Body.AsMemory(0, step.Body.Length / 2), _stop.Token);
                 await stream.FlushAsync(_stop.Token);
+                return false;
+            case "stall":
+                await WriteHeadAsync(stream, step);
+                await stream.WriteAsync(step.Body.AsMemory(0, step.Body.Length / 2), _stop.Token);
+                await stream.FlushAsync(_stop.Token);
+                await WaitForCloseAsync(stream);
                 return false;
             case "drip":
                 await WriteHeadAsync(stream, step);
