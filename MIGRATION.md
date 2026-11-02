@@ -6,6 +6,69 @@ NuGet package. We follow
 package is on 0.x, a breaking change bumps the minor version; from 1.0 on,
 only a major version bump breaks. Every breaking release has an entry here.
 
+## From 0.11.0 to 0.13.0
+
+The SDK now shares its major.minor with the Poli Page API, so there is no
+0.12. This release follows the API contract v0.13.0. See the
+[CHANGELOG](CHANGELOG.md#0130---2026-11-02) for the full list.
+
+### A 2xx whose body is not JSON is `invalid_response`
+
+It threw a raw `System.Text.Json.JsonException`. It now throws
+`PoliPageInvalidResponseException`, code `invalid_response`, message
+`Invalid response: HTTP <status> body is not JSON`, with the real 2xx as
+`StatusCode` and the request id. It is not retried. In an integration,
+`ToPayload()` answers 502 for it.
+
+```csharp
+// 0.11.0
+catch (JsonException) { /* a proxy answered instead of the API */ }
+
+// 0.13.0
+catch (PoliPageInvalidResponseException ex) { /* a proxy answered; ex.StatusCode is its 2xx */ }
+```
+
+### `RenderToFileAsync` throws `io_error`
+
+A file that cannot be written threw a raw `IOException` or
+`UnauthorizedAccessException`; it now throws `PoliPageException` with
+`Code == PoliPageErrorCode.IoError`, the message `Failed to write PDF: <reason>`
+and the file system's exception as `InnerException`. `RenderToFileAsync`
+also creates the missing parent directories, and leaves the target untouched
+on any failure.
+
+```csharp
+// 0.11.0
+catch (IOException ex) { /* disk full, missing directory... */ }
+
+// 0.13.0
+catch (PoliPageException ex) when (ex.Code == PoliPageErrorCode.IoError)
+{
+    // disk full, permissions, a missing mount...; ex.InnerException is the IOException
+}
+```
+
+### The PDF download is bounded by `RequestTimeout`
+
+The presigned-URL download now uses `RequestTimeout` (60 s by default, or the
+call's `RequestOptions.RequestTimeout`). Before, only `DownloadHttpClient`'s
+`HttpClient.Timeout` (100 s by default) bounded the wait for the storage's
+headers, and reading the PDF had no bound. `Render.PdfAsync` and
+`DocumentDescriptor.DownloadPdfAsync` bound the whole download, so raise
+`RequestTimeout` if your PDFs take longer than that to download.
+`Render.PdfStreamAsync` and `RenderToFileAsync` use it as an idle timeout,
+the wait for the storage's answer and each read, and are never cut off for
+their total length. Past the timeout the error is `DOWNLOAD_FAILED` with the
+message `Failed to download PDF: timeout` (was
+`Failed to download PDF: network error`).
+
+### `PoliPageErrorPayload` serializes with fixed keys
+
+`JsonSerializer.Serialize(ex.ToPayload())` writes `code`, `message`, `status`
+and `requestId`, whatever the naming policy (the default options wrote
+`Code`, `Message`, `Status` and `RequestId`). A client that read the
+PascalCase keys from an integration's error body reads the camelCase ones.
+
 ## From 0.10.0 to 0.11.0
 
 The SDK now follows the Poli Page API contract
