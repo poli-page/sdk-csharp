@@ -5,6 +5,15 @@ description: Upgrade guides for moving between breaking releases of the .NET SDK
 
 This page tracks breaking changes between releases of the `PoliPage` NuGet package. While the package is on 0.x, a breaking change bumps the minor version. For the full per-release diff, see the [changelog](../changelog/).
 
+## From 0.11.0 to 0.13.0
+
+The SDK now shares its major.minor with the Poli Page API, so there is no 0.12. This release follows the API contract v0.13.0. The full guide is in [`MIGRATION.md` in the repo](https://github.com/poli-page/sdk-csharp/blob/main/MIGRATION.md#from-0110-to-0130).
+
+- A 2xx whose body is not JSON throws `PoliPageInvalidResponseException` (`invalid_response`), never retried, instead of a raw `JsonException`.
+- `RequestTimeout` bounds the presigned PDF download (the whole download, or an idle timeout for `Render.PdfStreamAsync`); past it, `DOWNLOAD_FAILED` with the message `Failed to download PDF: timeout`. See [Download timeouts](../../production/cancellation/#download-timeouts).
+- `RenderToFileAsync` throws `PoliPageException` with `Code == PoliPageErrorCode.IoError` instead of a raw `IOException` or `UnauthorizedAccessException`, creates the missing parent directories, and leaves the target untouched on failure.
+- `PoliPageErrorPayload` serializes with the keys `code`, `message`, `status` and `requestId` whatever the serializer's naming policy, and `ToPayload()` answers 502 for `invalid_response`.
+
 ## From 0.10.0 to 0.11.0
 
 The SDK follows the Poli Page API contract: the retry rules, the SDK's error messages and caller cancellation are the same in every Poli Page SDK. The full guide is in [`MIGRATION.md` in the repo](https://github.com/poli-page/sdk-csharp/blob/main/MIGRATION.md#from-0100-to-0110).
