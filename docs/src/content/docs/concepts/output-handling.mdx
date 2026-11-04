@@ -38,6 +38,8 @@ await stream.CopyToAsync(Response.Body);
 
 The client exposes a helper that streams bytes directly to disk with bounded memory. It creates the missing parent directories. The PDF goes to a temporary file next to the target, moved into place only once it is complete: if anything fails (the render, the download, the write or a cancellation), the target is left as it was, an existing file keeps its content and a missing one is not created.
 
+When the path is a symbolic link, the file it points at is replaced and the link stays a link (a relative link resolves against the real directory that holds it). An existing file keeps its permissions on Unix. The move gives the file a new inode, so its owner becomes the user that writes it, and a hard link to the old file keeps the old content. An existing file that cannot be written (read-only, or a directory) fails at once, before the render, and is not replaced.
+
 A file it cannot write (a directory it cannot create, a denied access, a full disk) throws `PoliPageException` with `Code == PoliPageErrorCode.IoError` and the message `Failed to write PDF: <reason>`, the file system's exception as `InnerException`. It is never retried.
 
 ```csharp

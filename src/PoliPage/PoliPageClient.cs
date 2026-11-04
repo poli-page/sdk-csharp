@@ -298,7 +298,12 @@ public sealed class PoliPageClient : IDisposable
     /// render, the download, the write or a cancellation), the target is left as it was: an
     /// existing file keeps its content and a missing one is not created. The directory and
     /// the temporary file are prepared before the render, so a path that cannot be written
-    /// costs no render.
+    /// costs no render; so does an existing file that cannot be written (read-only, or a
+    /// directory), which is <c>io_error</c> and is not replaced. A <paramref name="path"/>
+    /// that is a symbolic link is resolved (a relative link against the real directory that
+    /// holds it): the file it points at is replaced and the link stays a link. An existing file keeps its
+    /// permissions on Unix, but the move gives it a new inode: its owner becomes the writing
+    /// user, and a hard link to the old file keeps the old content.
     /// </remarks>
     /// <param name="input">The project, template and data to render.</param>
     /// <param name="path">Destination file path. Existing files are overwritten.</param>

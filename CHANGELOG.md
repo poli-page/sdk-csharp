@@ -36,7 +36,8 @@ guide.
 - `ToPayload()` answers `Status` 502 for `invalid_response`. The exception's
   own `StatusCode` keeps the real 2xx.
 - The Release workflow checks that the API contract pinned for the tests has
-  the release tag's major.minor (`scripts/check-contract-version.sh`), and
+  the release tag's major.minor, and that `ci.yml` and `release.yml` pin the
+  same contract commit (`scripts/check-contract-version.sh`), and
   [RELEASING.md](RELEASING.md) states the versioning rules.
 
 ### Changed
@@ -71,7 +72,13 @@ guide.
   write or a cancellation), the target is left as it was: an existing file
   keeps its content and a missing one is not created. The directory and the
   temporary file are prepared before the render, so a path that cannot be
-  written costs no render.
+  written costs no render; so does an existing file that cannot be written
+  (read-only, or a directory), which is `io_error` and is not replaced.
+- `RenderToFileAsync` on a symbolic link replaces the file the link points at
+  (a relative link resolved against the real directory that holds it), so the
+  link stays a link. An existing file keeps its permissions on Unix. The move
+  gives the file a new inode, so its owner becomes the user that writes it,
+  and a hard link to the old file keeps the old content.
 - **BREAKING**: `PoliPageErrorPayload` serializes with exactly the keys
   `code`, `message`, `status` and `requestId`, the same in every Poli Page
   SDK, whatever the `JsonSerializerOptions` naming policy. It followed the

@@ -20,8 +20,17 @@ public sealed class RenderToFileTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_directory))
-            Directory.Delete(_directory, recursive: true);
+        if (!Directory.Exists(_directory))
+            return;
+
+        // A read-only file blocks the delete on Windows.
+        foreach (var file in Directory.EnumerateFiles(_directory, "*", SearchOption.AllDirectories))
+        {
+            if (new FileInfo(file).LinkTarget is null)
+                File.SetAttributes(file, FileAttributes.Normal);
+        }
+
+        Directory.Delete(_directory, recursive: true);
     }
 
     private static MockStep PdfAnswer() => Bytes(200, Pdf, "application/pdf");
@@ -110,8 +119,102 @@ public sealed class RenderToFileTests : IDisposable
         var act = () => client.RenderToFileAsync(Input, target);
 
         ShouldBeIoError((await act.Should().ThrowAsync<PoliPageException>()).Which);
+        server.Requests.Should().BeEmpty("a target that cannot be written costs no render");
         Directory.Exists(target).Should().BeTrue();
         Entries(target).Should().Equal("keep");
+        Entries().Should().Equal("invoice.pdf");
+    }
+
+    [UnixFact]
+    public async Task A_symlinked_target_replaces_the_file_it_points_at_and_stays_a_link()
+    {
+        await using var server = new MockServer(origin => [Descriptor(origin), PdfAnswer()]);
+        using var client = new PoliPageClient(Options(server));
+        var real = Path.Combine(_directory, "real.pdf");
+        var link = Path.Combine(_directory, "link.pdf");
+        await File.WriteAllBytesAsync(real, Previous);
+        File.CreateSymbolicLink(link, "real.pdf");
+
+        await client.RenderToFileAsync(Input, link);
+
+        new FileInfo(link).LinkTarget.Should().Be("real.pdf");
+        (await File.ReadAllBytesAsync(real)).Should().Equal(Pdf);
+        Entries().Should().Equal("link.pdf", "real.pdf");
+    }
+
+    [UnixFact]
+    public async Task A_link_to_a_missing_file_creates_that_file()
+    {
+        await using var server = new MockServer(origin => [Descriptor(origin), PdfAnswer()]);
+        using var client = new PoliPageClient(Options(server));
+        var target = Path.Combine(_directory, "out", "invoice.pdf");
+        var link = Path.Combine(_directory, "link.pdf");
+        File.CreateSymbolicLink(link, target);
+
+        await client.RenderToFileAsync(Input, link);
+
+        new FileInfo(link).LinkTarget.Should().Be(target);
+        (await File.ReadAllBytesAsync(target)).Should().Equal(Pdf);
+    }
+
+    [UnixFact]
+    public async Task A_relative_link_resolves_against_its_real_directory()
+    {
+        // sym -> real/dir, and real/dir/link -> ../a.pdf: through sym, the link's real
+        // directory is real/dir, so the file is real/a.pdf, not the a.pdf next to sym.
+        await using var server = new MockServer(origin => [Descriptor(origin), PdfAnswer()]);
+        using var client = new PoliPageClient(Options(server));
+        var realDir = Path.Combine(_directory, "real", "dir");
+        Directory.CreateDirectory(realDir);
+        Directory.CreateSymbolicLink(Path.Combine(_directory, "sym"), Path.Combine("real", "dir"));
+        File.CreateSymbolicLink(Path.Combine(realDir, "link"), Path.Combine("..", "a.pdf"));
+        var file = Path.Combine(_directory, "real", "a.pdf");
+        await File.WriteAllBytesAsync(file, Previous);
+
+        await client.RenderToFileAsync(Input, Path.Combine(_directory, "sym", "link"));
+
+        (await File.ReadAllBytesAsync(file)).Should().Equal(Pdf);
+        File.Exists(Path.Combine(_directory, "a.pdf")).Should().BeFalse();
+        new FileInfo(Path.Combine(realDir, "link")).LinkTarget.Should().Be(Path.Combine("..", "a.pdf"));
+        Entries(Path.Combine(_directory, "real")).Should().Equal("a.pdf", "dir");
+    }
+
+    [UnixFact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    public async Task An_existing_file_keeps_its_mode()
+    {
+        await using var server = new MockServer(origin => [Descriptor(origin), PdfAnswer()]);
+        using var client = new PoliPageClient(Options(server));
+        var path = Path.Combine(_directory, "invoice.pdf");
+        await File.WriteAllBytesAsync(path, Previous);
+        const UnixFileMode Mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead;
+        File.SetUnixFileMode(path, Mode);
+
+        await client.RenderToFileAsync(Input, path);
+
+        (await File.ReadAllBytesAsync(path)).Should().Equal(Pdf);
+        File.GetUnixFileMode(path).Should().Be(Mode);
+    }
+
+    [WritableTargetCheckFact]
+    public async Task A_read_only_target_is_io_error_before_any_render_and_is_not_replaced()
+    {
+        await using var server = new MockServer(origin => [Descriptor(origin), PdfAnswer()]);
+        using var client = new PoliPageClient(Options(server));
+        var path = Path.Combine(_directory, "invoice.pdf");
+        await File.WriteAllBytesAsync(path, Previous);
+        if (OperatingSystem.IsWindows())
+            File.SetAttributes(path, FileAttributes.ReadOnly);
+        else
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+        var act = () => client.RenderToFileAsync(Input, path);
+
+        var thrown = await act.Should().ThrowAsync<PoliPageException>();
+        ShouldBeIoError(thrown.Which);
+        thrown.Which.InnerException.Should().BeOfType<UnauthorizedAccessException>();
+        server.Requests.Should().BeEmpty("a file that cannot be written costs no render");
+        (await File.ReadAllBytesAsync(path)).Should().Equal(Previous);
         Entries().Should().Equal("invoice.pdf");
     }
 
@@ -172,5 +275,25 @@ public sealed class RenderToFileTests : IDisposable
 
         (await act.Should().ThrowAsync<PoliPageException>()).Which.Code.Should().Be(PoliPageErrorCode.Aborted);
         Entries().Should().BeEmpty();
+    }
+}
+
+/// <summary>Skipped on Windows, where symbolic links need a privilege and modes do not exist.</summary>
+public sealed class UnixFactAttribute : FactAttribute
+{
+    public UnixFactAttribute()
+    {
+        if (OperatingSystem.IsWindows())
+            Skip = "Unix only: symbolic links need a privilege on Windows, and Unix file modes do not apply there.";
+    }
+}
+
+/// <summary>Skipped as root on Unix, where a read-only mode does not stop a write.</summary>
+public sealed class WritableTargetCheckFactAttribute : FactAttribute
+{
+    public WritableTargetCheckFactAttribute()
+    {
+        if (!OperatingSystem.IsWindows() && string.Equals(Environment.UserName, "root", StringComparison.Ordinal))
+            Skip = "root can write a read-only file.";
     }
 }
