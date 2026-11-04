@@ -41,7 +41,7 @@ description: Every exception type thrown by the Poli Page .NET SDK, plus the wir
 
 import ErrorTable from '@preset/components/ErrorTable.astro';
 
-Every failure thrown by the SDK is a \`PoliPageException\` or a subclass: API errors, network failures, timeouts, a cancellation (\`aborted\`), download failures and constructor validation. The base type exposes \`Code\`, \`StatusCode\`, \`Message\`, and \`RequestId\`. Compare \`Code\` against the \`PoliPageErrorCode\` constants for fine-grained branching when the subclass is too coarse.
+Every failure thrown by the SDK is a \`PoliPageException\` or a subclass: API errors, network failures, timeouts, a cancellation (\`aborted\`), download failures, invalid responses, file write failures and constructor validation. The base type exposes \`Code\`, \`StatusCode\`, \`Message\`, and \`RequestId\`. Compare \`Code\` against the \`PoliPageErrorCode\` constants for fine-grained branching when the subclass is too coarse.
 
 ## Exception hierarchy
 
@@ -49,7 +49,7 @@ Every failure thrown by the SDK is a \`PoliPageException\` or a subclass: API er
 
 ## Wire-level codes
 
-These constants live on the static \`PoliPageErrorCode\` class. The API codes are the exact strings the API returns in its JSON error body (the \`error\` field); \`invalid_options\`, \`timeout\`, \`network_error\`, \`aborted\`, \`DOWNLOAD_FAILED\` and \`UNKNOWN\` are raised by the SDK itself; \`aborted\` is a cancellation of your own \`CancellationToken\` (see [Cancellation](../../production/cancellation/)). \`Code\` carries any other code the API returns, verbatim.
+These constants live on the static \`PoliPageErrorCode\` class. The API codes are the exact strings the API returns in its JSON error body (the \`error\` field); \`invalid_options\`, \`timeout\`, \`network_error\`, \`aborted\`, \`DOWNLOAD_FAILED\`, \`invalid_response\`, \`io_error\` and \`UNKNOWN\` are raised by the SDK itself; \`aborted\` is a cancellation of your own \`CancellationToken\` (see [Cancellation](../../production/cancellation/)). \`Code\` carries any other code the API returns, verbatim.
 
 \`IsRetryable()\` is \`true\` for \`network_error\`, \`timeout\`, a 5xx and a 429, except \`QUOTA_EXCEEDED\`, \`OVERAGE_CAP_EXCEEDED\` and \`STORAGE_ACCESS_DENIED\`, which waiting cannot fix; it is never \`true\` for \`aborted\` or \`DOWNLOAD_FAILED\`. The SDK retries by the same rule (see [Retries and idempotency](../../production/retries-and-idempotency/)).
 

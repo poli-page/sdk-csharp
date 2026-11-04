@@ -6,24 +6,31 @@ namespace PoliPage.Internal;
 /// stream releases the response, which closes the connection.
 /// </summary>
 /// <remarks>
-/// All reads forward to the inner body stream, and a read that fails raises the SDK's
-/// own error, never the HTTP stack's: <c>aborted</c> when the call's token or the read's
-/// token is cancelled, otherwise <c>DOWNLOAD_FAILED</c> without a status (a connection cut
-/// mid-body). The download client's timeout does not apply here: it ends with the headers. Length / Position / Seek are not supported
-/// because HTTP response bodies are not seekable in the general case.
+/// All reads forward to the inner body stream, each bounded by the idle timeout: a read that
+/// gets no byte within it fails, while the time between two reads, the caller's pace, is not
+/// bounded. A read that fails raises the SDK's own error, never the HTTP stack's:
+/// <c>aborted</c> when the call's token or the read's token is cancelled,
+/// <c>DOWNLOAD_FAILED</c> (<c>Failed to download PDF: timeout</c>) when the idle timeout
+/// fired, otherwise <c>DOWNLOAD_FAILED</c> without a status (a connection cut mid-body, or a
+/// body short of its <c>Content-Length</c>). Once a read timed out, every later read fails the
+/// same way. Length / Position / Seek are not supported because HTTP response bodies are not
+/// seekable in the general case.
 /// </remarks>
 internal sealed class ResponseOwnedStream : Stream
 {
     private readonly Stream _inner;
     private readonly HttpResponseMessage _response;
     private readonly CancellationToken _callToken;
+    private readonly TimeSpan _idleTimeout;
+    private volatile bool _timedOut;
     private bool _disposed;
 
-    internal ResponseOwnedStream(Stream inner, HttpResponseMessage response, CancellationToken callToken)
+    internal ResponseOwnedStream(Stream inner, HttpResponseMessage response, TimeSpan idleTimeout, CancellationToken callToken)
     {
         _inner = inner;
         _response = response;
         _callToken = callToken;
+        _idleTimeout = idleTimeout;
     }
 
     public override bool CanRead => !_disposed && _inner.CanRead;
@@ -45,26 +52,22 @@ internal sealed class ResponseOwnedStream : Stream
         => _inner.FlushAsync(cancellationToken);
 
     public override int Read(byte[] buffer, int offset, int count)
-    {
-        try
-        {
-            return _inner.Read(buffer, offset, count);
-        }
-        catch (Exception ex) when (IsReadFailure(ex, CancellationToken.None))
-        {
-            throw Failure(ex, CancellationToken.None);
-        }
-    }
+        => Read(buffer.AsSpan(offset, count));
 
     public override int Read(Span<byte> buffer)
     {
+        ThrowIfTimedOut();
+        // A synchronous read takes no token: when the idle timeout fires, the response is
+        // released, which ends the read.
+        using var idle = StartIdleTimer();
+        using var abort = idle?.Token.UnsafeRegister(static state => ((ResponseOwnedStream)state!).AbortOnTimeout(), this);
         try
         {
             return _inner.Read(buffer);
         }
-        catch (Exception ex) when (IsReadFailure(ex, CancellationToken.None))
+        catch (Exception ex) when (IsReadFailure(ex, idle, CancellationToken.None))
         {
-            throw Failure(ex, CancellationToken.None);
+            throw Failure(ex, idle, CancellationToken.None);
         }
     }
 
@@ -73,13 +76,16 @@ internal sealed class ResponseOwnedStream : Stream
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
+        ThrowIfTimedOut();
+        using var idle = StartIdleTimer();
+        using var linked = idle is null ? null : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, idle.Token);
         try
         {
-            return await _inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            return await _inner.ReadAsync(buffer, linked?.Token ?? cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (IsReadFailure(ex, cancellationToken))
+        catch (Exception ex) when (IsReadFailure(ex, idle, cancellationToken))
         {
-            throw Failure(ex, cancellationToken);
+            throw Failure(ex, idle, cancellationToken);
         }
     }
 
@@ -114,16 +120,40 @@ internal sealed class ResponseOwnedStream : Stream
         }
     }
 
-    private bool IsReadFailure(Exception ex, CancellationToken readToken)
+    /// <summary>A timer for one read, or <see langword="null"/> with an infinite timeout.</summary>
+    private CancellationTokenSource? StartIdleTimer()
+        => _idleTimeout == System.Threading.Timeout.InfiniteTimeSpan ? null : new CancellationTokenSource(_idleTimeout);
+
+    private void AbortOnTimeout()
+    {
+        _timedOut = true;
+        _response.Dispose();
+    }
+
+    private void ThrowIfTimedOut()
+    {
+        if (_timedOut && !_disposed)
+            throw SdkErrors.DownloadTimeout(inner: null);
+    }
+
+    private bool TimedOut(CancellationTokenSource? idle)
+    {
+        if (idle?.IsCancellationRequested == true)
+            _timedOut = true;
+        return _timedOut;
+    }
+
+    private bool IsReadFailure(Exception ex, CancellationTokenSource? idle, CancellationToken readToken)
         => !_disposed
             && (SdkErrors.IsTransportFailure(ex)
                 || _callToken.IsCancellationRequested
-                || readToken.IsCancellationRequested);
+                || readToken.IsCancellationRequested
+                || TimedOut(idle));
 
-    private PoliPageException Failure(Exception ex, CancellationToken readToken)
+    private PoliPageException Failure(Exception ex, CancellationTokenSource? idle, CancellationToken readToken)
         => readToken.IsCancellationRequested
             ? SdkErrors.Aborted(ex)
-            : PoliPageClient.DownloadFailure(ex, _callToken);
+            : PoliPageClient.DownloadFailure(ex, TimedOut(idle), _callToken);
 
     public override long Seek(long offset, SeekOrigin origin)
         => throw new NotSupportedException("HTTP response bodies are not seekable.");

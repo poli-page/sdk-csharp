@@ -41,6 +41,7 @@ public sealed class Documents
     /// <exception cref="ArgumentNullException"><paramref name="documentId"/> is <see langword="null"/>.</exception>
     /// <exception cref="PoliPageNotFoundException">The document does not exist.</exception>
     /// <exception cref="PoliPageGoneException">The document was soft-deleted.</exception>
+    /// <exception cref="PoliPageInvalidResponseException">The API answered a 2xx whose body is not JSON.</exception>
     /// <exception cref="PoliPageException">Any other API failure.</exception>
     /// <exception cref="PoliPageException">
     /// With <c>Code == PoliPageErrorCode.Aborted</c> when <paramref name="cancellationToken"/> was
@@ -62,6 +63,7 @@ public sealed class Documents
             path,
             options,
             "application/json",
+            expectsJson: true,
             cancellationToken).ConfigureAwait(false);
 
         var json = await response.Content.ReadAsStringAsync(CancellationToken.None).ConfigureAwait(false);
@@ -141,6 +143,7 @@ public sealed class Documents
             path,
             options,
             "text/html",
+            expectsJson: false,
             cancellationToken).ConfigureAwait(false);
 
         var html = await response.Content.ReadAsStringAsync(CancellationToken.None).ConfigureAwait(false);
@@ -166,6 +169,7 @@ public sealed class Documents
     /// <returns>One <see cref="Thumbnail"/> per page of the source document.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="documentId"/> is <see langword="null"/>.</exception>
     /// <exception cref="PoliPageNotFoundException">The document does not exist.</exception>
+    /// <exception cref="PoliPageInvalidResponseException">The API answered a 2xx whose body is not JSON.</exception>
     /// <exception cref="PoliPageException">Any other API failure.</exception>
     /// <exception cref="PoliPageException">
     /// With <c>Code == PoliPageErrorCode.Aborted</c> when <paramref name="cancellationToken"/> was

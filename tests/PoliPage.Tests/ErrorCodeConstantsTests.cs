@@ -134,6 +134,8 @@ public sealed class ErrorCodeConstantsTests
             ["Timeout"] = "timeout",
             ["Aborted"] = "aborted",
             ["DownloadFailed"] = "DOWNLOAD_FAILED",
+            ["InvalidResponse"] = "invalid_response",
+            ["IoError"] = "io_error",
             // SDK-internal fallback
             ["Unknown"] = "UNKNOWN",
         };

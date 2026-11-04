@@ -10,8 +10,9 @@ namespace PoliPage;
 public sealed class Render
 {
     private readonly ITransport _transport;
-    private readonly Func<string, CancellationToken, Task<byte[]>> _downloader;
-    private readonly Func<string, CancellationToken, Task<Stream>> _streamDownloader;
+    private readonly Func<string, TimeSpan?, CancellationToken, Task<byte[]>> _downloader;
+    private readonly Func<string, TimeSpan?, CancellationToken, Task<Stream>> _streamDownloader;
+    private readonly Func<string, CancellationToken, Task<byte[]>> _descriptorDownloader;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -25,17 +26,25 @@ public sealed class Render
 
     internal Render(
         ITransport transport,
-        Func<string, CancellationToken, Task<byte[]>> downloader,
-        Func<string, CancellationToken, Task<Stream>> streamDownloader)
+        Func<string, TimeSpan?, CancellationToken, Task<byte[]>> downloader,
+        Func<string, TimeSpan?, CancellationToken, Task<Stream>> streamDownloader)
     {
         _transport = transport;
         _downloader = downloader;
         _streamDownloader = streamDownloader;
+        // A descriptor's DownloadPdfAsync is bounded by the client's timeout.
+        _descriptorDownloader = (url, cancellationToken) => downloader(url, null, cancellationToken);
     }
 
     /// <summary>
     /// Renders a stored project template to a PDF and returns the raw bytes.
     /// </summary>
+    /// <remarks>
+    /// Two HTTP requests: the render, then the download of the PDF from its presigned URL.
+    /// The timeout (<see cref="RequestOptions.RequestTimeout"/>, else
+    /// <see cref="PoliPageClientOptions.RequestTimeout"/>) bounds each API attempt and, once
+    /// more, the whole download. The download is never retried.
+    /// </remarks>
     /// <param name="input">The project, template and data to render.</param>
     /// <param name="options">Optional per-call overrides (idempotency key, timeout, extra headers).</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
@@ -46,6 +55,11 @@ public sealed class Render
     /// <exception cref="PoliPageValidationException">The API returned 400 or 422 (invalid input).</exception>
     /// <exception cref="PoliPageRateLimitException">The API returned 429; <see cref="PoliPageRateLimitException.RetryAfter"/> exposes the server's retry hint.</exception>
     /// <exception cref="PoliPageNetworkException">DNS, TCP, or TLS failure before the response was received.</exception>
+    /// <exception cref="PoliPageInvalidResponseException">The API answered a 2xx whose body is not JSON.</exception>
+    /// <exception cref="PoliPageDownloadException">
+    /// The PDF download failed (<c>DOWNLOAD_FAILED</c>): a non-2xx storage status, no complete
+    /// answer, or no whole PDF within the timeout (<c>Failed to download PDF: timeout</c>).
+    /// </exception>
     /// <exception cref="PoliPageException">Any other API failure, or a per-request timeout (<see cref="PoliPageErrorCode.Timeout"/>).</exception>
     /// <exception cref="PoliPageException">
     /// With <c>Code == PoliPageErrorCode.Aborted</c> when <paramref name="cancellationToken"/> was
@@ -62,7 +76,7 @@ public sealed class Render
         // The Poli Page API has a single render endpoint that always returns a stored
         // DocumentDescriptor with a presigned URL. Mirrors sdk-node's render.pdf (src/render.ts:78-114).
         var descriptor = await RenderDocumentCoreAsync(input, options, cancellationToken).ConfigureAwait(false);
-        return await _downloader(descriptor.PresignedPdfUrl, cancellationToken).ConfigureAwait(false);
+        return await _downloader(descriptor.PresignedPdfUrl, options?.RequestTimeout, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -71,6 +85,14 @@ public sealed class Render
     /// for disposing the returned stream, which releases the underlying
     /// HTTP response.
     /// </summary>
+    /// <remarks>
+    /// The timeout (<see cref="RequestOptions.RequestTimeout"/>, else
+    /// <see cref="PoliPageClientOptions.RequestTimeout"/>) bounds each API attempt and, for the
+    /// download, the wait for the storage's answer and each read of the stream: an idle
+    /// timeout, not a total, so a large PDF read at the caller's pace is never cut off. Past
+    /// it, the call, or the read, throws <see cref="PoliPageDownloadException"/> with the
+    /// message <c>Failed to download PDF: timeout</c>.
+    /// </remarks>
     /// <param name="input">The project, template and data to render.</param>
     /// <param name="options">Optional per-call overrides (idempotency key, timeout, extra headers).</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
@@ -94,7 +116,7 @@ public sealed class Render
         ArgumentNullException.ThrowIfNull(input);
 
         var descriptor = await RenderDocumentCoreAsync(input, options, cancellationToken).ConfigureAwait(false);
-        return await _streamDownloader(descriptor.PresignedPdfUrl, cancellationToken).ConfigureAwait(false);
+        return await _streamDownloader(descriptor.PresignedPdfUrl, options?.RequestTimeout, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -149,12 +171,13 @@ public sealed class Render
             cancellationToken).ConfigureAwait(false);
 
         var descriptor = await ParseDescriptorAsync(response).ConfigureAwait(false);
-        return descriptor with { Downloader = _downloader };
+        return descriptor with { Downloader = _descriptorDownloader };
     }
 
     private static async Task<DocumentDescriptor> ParseDescriptorAsync(HttpResponseMessage response)
     {
-        // The transport already read the body into memory: no I/O, nothing to cancel.
+        // The transport already read the body into memory and checked that it is JSON: no
+        // I/O, nothing to cancel.
         var json = await response.Content.ReadAsStringAsync(CancellationToken.None).ConfigureAwait(false);
         // Why: Phase 8 will replace this with JsonSerializerContext (source-gen). Until then,
         // suppress IL2026/IL3050 — dynamic deserialization is only a concern for AOT-published

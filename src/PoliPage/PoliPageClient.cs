@@ -37,6 +37,7 @@ public sealed class PoliPageClient : IDisposable
     internal static readonly Uri DefaultBaseAddress = new("https://api.poli.page");
 
     private readonly PoliPageClientOptions _options;
+    private readonly TimeSpan _requestTimeout;
     private readonly HttpClient _httpClient;
     private readonly bool _ownsHttpClient;
     private readonly HttpClient _downloadHttp;
@@ -80,6 +81,7 @@ public sealed class PoliPageClient : IDisposable
             throw new PoliPageException(PoliPageErrorCode.InvalidOptions, statusCode: 0, "PoliPage: RequestTimeout must be > 0.");
 
         _options = options;
+        _requestTimeout = options.RequestTimeout;
         BaseAddress = options.BaseUrl ?? DefaultBaseAddress;
 
         (_httpClient, _ownsHttpClient) = options.HttpClient is not null
@@ -89,9 +91,10 @@ public sealed class PoliPageClient : IDisposable
         // Why: presigned S3 URLs reject requests that carry an Authorization header alongside
         // the URL signature, and some object stores 400 on an unexpected User-Agent. The
         // download path uses its own bare HttpClient so the SDK's API auth/UA can never leak.
+        // No HttpClient.Timeout of its own: RequestTimeout bounds the download.
         (_downloadHttp, _ownsDownloadHttp) = options.DownloadHttpClient is not null
             ? (options.DownloadHttpClient, false)
-            : (new HttpClient(), true);
+            : (new HttpClient { Timeout = System.Threading.Timeout.InfiniteTimeSpan }, true);
 
         var transport = new HttpTransport(
             _httpClient,
@@ -106,7 +109,7 @@ public sealed class PoliPageClient : IDisposable
             options.OnResponse,
             jitter);
         _render = new Render(transport, DownloadAsync, DownloadStreamAsync);
-        _documents = new Documents(transport, DownloadAsync);
+        _documents = new Documents(transport, (url, cancellationToken) => DownloadAsync(url, null, cancellationToken));
     }
 
     // No HttpClient.Timeout of its own (it defaults to 100 s): RequestTimeout bounds each
@@ -149,24 +152,30 @@ public sealed class PoliPageClient : IDisposable
     /// <summary>
     /// Fetches the bytes at <paramref name="url"/> via the SDK's dedicated, header-less
     /// download transport. Used by <see cref="DocumentDescriptor.DownloadPdfAsync"/> and
-    /// by <see cref="Render.PdfAsync"/> for the post-render PDF fetch step. The download is
-    /// never retried (spec §9.1).
+    /// by <see cref="Render.PdfAsync"/> for the post-render PDF fetch step.
+    /// <paramref name="timeout"/> (else the client's <see cref="PoliPageClientOptions.RequestTimeout"/>)
+    /// bounds the whole download, body included. The download is never retried.
     /// </summary>
-    internal async Task<byte[]> DownloadAsync(string url, CancellationToken cancellationToken)
+    internal async Task<byte[]> DownloadAsync(string url, TimeSpan? timeout, CancellationToken cancellationToken)
     {
+        using var timeoutCts = new CancellationTokenSource(timeout ?? _requestTimeout);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+        var token = linkedCts.Token;
+
         using var request = BuildDownloadRequest(url);
-        using var response = await SendDownloadAsync(request, cancellationToken).ConfigureAwait(false);
+        using var response = await SendDownloadAsync(request, timeoutCts, token, cancellationToken).ConfigureAwait(false);
 
         ThrowIfDownloadFailed(response);
 
         try
         {
-            return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+            return await HttpTransport.BoundAsync(response.Content.ReadAsByteArrayAsync(token), token).ConfigureAwait(false);
         }
         catch (Exception ex) when (SdkErrors.IsTransportFailure(ex) || cancellationToken.IsCancellationRequested)
         {
-            // A connection cut or a timeout mid-body: the SDK's own error, never the raw one.
-            throw DownloadFailure(ex, cancellationToken);
+            // A connection cut, a body short of its Content-Length or a timeout mid-body:
+            // the SDK's own error, never the raw one.
+            throw DownloadFailure(ex, timeoutCts.IsCancellationRequested, cancellationToken);
         }
     }
 
@@ -180,30 +189,44 @@ public sealed class PoliPageClient : IDisposable
 
     /// <summary>
     /// The error for a download that got no complete answer: <c>aborted</c> when the
-    /// caller cancelled, otherwise <c>DOWNLOAD_FAILED</c> without a status (a connection,
-    /// DNS or TLS failure, a connection cut mid-body, or the download client's timeout).
+    /// caller cancelled; <c>DOWNLOAD_FAILED</c> without a status otherwise, with the message
+    /// <c>Failed to download PDF: timeout</c> when a timeout fired (the SDK's, as
+    /// <paramref name="timedOut"/> reports it, or the download HttpClient's own
+    /// <see cref="System.Net.Http.HttpClient.Timeout"/>), and
+    /// <c>Failed to download PDF: network error</c> for anything else (a connection, DNS or
+    /// TLS failure, a connection cut mid-body).
     /// </summary>
-    internal static PoliPageException DownloadFailure(Exception ex, CancellationToken cancellationToken)
-        => cancellationToken.IsCancellationRequested ? SdkErrors.Aborted(ex) : SdkErrors.DownloadNetwork(ex);
+    internal static PoliPageException DownloadFailure(Exception ex, bool timedOut, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+            return SdkErrors.Aborted(ex);
+        if (timedOut || ex is TaskCanceledException { InnerException: TimeoutException })
+            return SdkErrors.DownloadTimeout(ex);
+        return SdkErrors.DownloadNetwork(ex);
+    }
 
     /// <summary>
-    /// Sends a request on the dedicated download transport, translating transport-level
-    /// failures (DNS, connection refused, TLS, the download client's timeout) into the SDK's
-    /// typed <see cref="PoliPageDownloadException"/> so callers never see a raw
-    /// <see cref="HttpRequestException"/>, and caller cancellation into <c>aborted</c>.
+    /// Sends a request on the dedicated download transport, bounded by
+    /// <paramref name="token"/> (the caller's cancellation and <paramref name="timeoutCts"/>)
+    /// whatever the download HttpClient's handler does with it. Transport-level failures
+    /// (DNS, connection refused, TLS, a timeout) become the SDK's typed
+    /// <see cref="PoliPageDownloadException"/> so callers never see a raw
+    /// <see cref="HttpRequestException"/>, and caller cancellation becomes <c>aborted</c>.
     /// </summary>
     private async Task<HttpResponseMessage> SendDownloadAsync(
-        HttpRequestMessage request, CancellationToken cancellationToken)
+        HttpRequestMessage request,
+        CancellationTokenSource timeoutCts,
+        CancellationToken token,
+        CancellationToken cancellationToken)
     {
         try
         {
-            return await _downloadHttp
-                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-                .ConfigureAwait(false);
+            var send = _downloadHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+            return await HttpTransport.BoundAsync(send, token).ConfigureAwait(false);
         }
         catch (Exception ex) when (SdkErrors.IsTransportFailure(ex) || cancellationToken.IsCancellationRequested)
         {
-            throw DownloadFailure(ex, cancellationToken);
+            throw DownloadFailure(ex, timeoutCts.IsCancellationRequested, cancellationToken);
         }
     }
 
@@ -211,29 +234,38 @@ public sealed class PoliPageClient : IDisposable
     /// Streaming variant of <see cref="DownloadAsync"/>. Returns a <see cref="Stream"/>
     /// that owns the underlying <see cref="HttpResponseMessage"/> so the caller can
     /// dispose both with a single <c>using</c>. Used by <see cref="Render.PdfStreamAsync"/>.
-    /// Its read failures are SDK errors too: <c>aborted</c> or <c>DOWNLOAD_FAILED</c>.
+    /// <paramref name="timeout"/> (else the client's <see cref="PoliPageClientOptions.RequestTimeout"/>)
+    /// is an idle timeout: it bounds the wait for the storage's answer, then each read of
+    /// the stream, not the total. Its read failures are SDK errors too: <c>aborted</c> or
+    /// <c>DOWNLOAD_FAILED</c>.
     /// </summary>
-    internal async Task<Stream> DownloadStreamAsync(string url, CancellationToken cancellationToken)
+    internal async Task<Stream> DownloadStreamAsync(string url, TimeSpan? timeout, CancellationToken cancellationToken)
     {
+        var idleTimeout = timeout ?? _requestTimeout;
+        using var timeoutCts = new CancellationTokenSource(idleTimeout);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+        var token = linkedCts.Token;
+
         var request = BuildDownloadRequest(url);
         HttpResponseMessage? response = null;
         try
         {
-            response = await SendDownloadAsync(request, cancellationToken).ConfigureAwait(false);
+            response = await SendDownloadAsync(request, timeoutCts, token, cancellationToken).ConfigureAwait(false);
 
             ThrowIfDownloadFailed(response);
 
             Stream bodyStream;
             try
             {
-                bodyStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+                bodyStream = await HttpTransport.BoundAsync(response.Content.ReadAsStreamAsync(token), token)
+                    .ConfigureAwait(false);
             }
             catch (Exception ex) when (SdkErrors.IsTransportFailure(ex) || cancellationToken.IsCancellationRequested)
             {
-                throw DownloadFailure(ex, cancellationToken);
+                throw DownloadFailure(ex, timeoutCts.IsCancellationRequested, cancellationToken);
             }
 
-            var owned = new ResponseOwnedStream(bodyStream, response, cancellationToken);
+            var owned = new ResponseOwnedStream(bodyStream, response, idleTimeout, cancellationToken);
             response = null; // ownership transferred to the stream wrapper
             return owned;
         }
@@ -257,17 +289,37 @@ public sealed class PoliPageClient : IDisposable
 
     /// <summary>
     /// Convenience helper that renders a stored project template directly to a file
-    /// on disk via <see cref="Render.PdfStreamAsync"/> + <see cref="Stream.CopyToAsync(Stream, CancellationToken)"/>.
-    /// Streams without buffering the whole PDF into memory.
+    /// on disk via <see cref="Render.PdfStreamAsync"/>, without buffering the whole PDF into
+    /// memory. It creates the file's missing parent directories.
     /// </summary>
+    /// <remarks>
+    /// The PDF is written to a temporary file in the target's directory, which is moved over
+    /// <paramref name="path"/> only once the whole PDF is written. When anything fails (the
+    /// render, the download, the write or a cancellation), the target is left as it was: an
+    /// existing file keeps its content and a missing one is not created. The directory and
+    /// the temporary file are prepared before the render, so a path that cannot be written
+    /// costs no render; so does an existing target that is not a regular file (a directory, a
+    /// FIFO, a device, a socket: <c>Failed to write PDF: &lt;target&gt;: not a regular file</c>)
+    /// or that the process may not write, which is <c>io_error</c> and is not replaced. The
+    /// target is checked from its attributes, never opened. A <paramref name="path"/>
+    /// that is a symbolic link is resolved (a relative link against the real directory that
+    /// holds it): the file it points at is replaced and the link stays a link. An existing file keeps its
+    /// permissions on Unix, but the move gives it a new inode: its owner becomes the writing
+    /// user, and a hard link to the old file keeps the old content.
+    /// </remarks>
     /// <param name="input">The project, template and data to render.</param>
     /// <param name="path">Destination file path. Existing files are overwritten.</param>
     /// <param name="options">Optional per-call overrides (idempotency key, timeout, extra headers).</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
     /// <exception cref="ArgumentNullException"><paramref name="input"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="path"/> is <see langword="null"/>, empty, or whitespace.</exception>
-    /// <exception cref="PoliPageException">See <see cref="Render.PdfAsync"/> for the full mapping.</exception>
-    /// <exception cref="IOException">The file at <paramref name="path"/> cannot be created or written.</exception>
+    /// <exception cref="PoliPageException">
+    /// With <c>Code == PoliPageErrorCode.IoError</c> when the file cannot be written (creating
+    /// its directory, opening, writing or moving it into place): the message is
+    /// <c>Failed to write PDF: &lt;reason&gt;</c>, with the file system's own text, and the
+    /// file system's exception is the <see cref="Exception.InnerException"/>. Never retried.
+    /// </exception>
+    /// <exception cref="PoliPageException">See <see cref="Render.PdfStreamAsync"/> for the other failures.</exception>
     public async Task RenderToFileAsync(
         RenderInput input,
         string path,
@@ -278,14 +330,30 @@ public sealed class PoliPageClient : IDisposable
         if (string.IsNullOrWhiteSpace(path))
             throw new ArgumentException("Path must not be null, empty, or whitespace.", nameof(path));
 
-        var pdf = await Render.PdfStreamAsync(input, options, cancellationToken).ConfigureAwait(false);
-        await using (pdf.ConfigureAwait(false))
+        var file = AtomicFileWriter.Open(path);
+        await using (file.ConfigureAwait(false))
         {
-            var file = File.Create(path);
-            await using (file.ConfigureAwait(false))
+            var pdf = await Render.PdfStreamAsync(input, options, cancellationToken).ConfigureAwait(false);
+            await using (pdf.ConfigureAwait(false))
             {
-                await pdf.CopyToAsync(file, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await pdf.CopyToAsync(file.Stream, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
+                {
+                    // The stream's copy already maps a cancelled read or write to aborted; this
+                    // keeps any other cancellation on the way out of the copy the same error.
+                    throw SdkErrors.Aborted(ex);
+                }
+                catch (Exception ex) when (ex is not PoliPageException && SdkErrors.IsFileSystemFailure(ex))
+                {
+                    // The PDF's reads raise PoliPageException: this is the file's write.
+                    throw SdkErrors.IoError(ex);
+                }
             }
+
+            await file.CommitAsync().ConfigureAwait(false);
         }
     }
 

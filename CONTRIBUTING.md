@@ -66,9 +66,13 @@ key.
 
 ## Releasing
 
+Which version to release (the SDK shares its major.minor with the Poli Page
+API) is in [RELEASING.md](RELEASING.md#versions).
+
 Nothing publishes without a maintainer's approval. Pushing a `vX.Y.Z`
 tag runs `.github/workflows/release.yml`: its `build` job checks that the
-tag matches `<Version>`, runs format, build, unit tests and pack; its
+tag matches `<Version>` and that the pinned API contract has the tag's
+major.minor, runs format, build, unit tests and pack; its
 `publish` job then waits for approval on the `nuget-release`
 environment, and only on approval pushes to nuget.org (Trusted
 Publishing / OIDC) and creates the GitHub Release from the version's
@@ -81,6 +85,7 @@ Publishing / OIDC) and creates the GitHub Release from the version's
 4. Merge the release commit to `main`.
 5. Run the pre-flight verification locally:
    ```bash
+   scripts/check-contract-version.sh X.Y.Z
    dotnet format --verify-no-changes
    dotnet build --configuration Release --no-restore -warnaserror
    POLI_CONTRACT=/path/to/contract.json \

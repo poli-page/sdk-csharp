@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-02
+
+Conformance with the Poli Page API contract v0.13.0
+([poli-page/api-contract](https://github.com/poli-page/api-contract)). The
+SDK now shares its major.minor with the Poli Page API, so it moves from 0.11
+to 0.13. See [MIGRATION.md](MIGRATION.md#from-0110-to-0130) for the upgrade
+guide.
+
+### Added
+
+- `invalid_response`: a 2xx answer whose body is not JSON, from a call that
+  expects JSON (the API call of `Render.PdfAsync`, `Render.PdfStreamAsync` and
+  `Render.DocumentAsync`, `Documents.GetAsync`, `Documents.ThumbnailsAsync`),
+  throws the new `PoliPageInvalidResponseException`, with
+  `Code == PoliPageErrorCode.InvalidResponse`, the message
+  `Invalid response: HTTP <status> body is not JSON`, the real 2xx as
+  `StatusCode`, the answer's `X-Request-Id` as `RequestId`, and the JSON
+  parser's error as `InnerException`. It is never retried, `IsRetryable()` is
+  `false`, and `OnError` receives it. Such a body usually comes from a proxy
+  or a captive portal between the SDK and the API. `Documents.PreviewAsync`
+  (HTML) and `Documents.DeleteAsync` (body ignored) are unchanged.
+- `io_error`: `RenderToFileAsync` throws `PoliPageException` with
+  `Code == PoliPageErrorCode.IoError` when it cannot write the file (creating
+  a parent directory, opening, writing or moving it into place). No status,
+  the message `Failed to write PDF: <reason>` with the file system's own text,
+  that exception as `InnerException`, never retried.
+- `ToPayload()` answers `Status` 502 for `invalid_response`. The exception's
+  own `StatusCode` keeps the real 2xx.
+- The Release workflow checks that the API contract pinned for the tests has
+  the release tag's major.minor, and that `ci.yml` and `release.yml` pin the
+  same contract commit (`scripts/check-contract-version.sh`), and
+  [RELEASING.md](RELEASING.md) states the versioning rules.
+
+### Changed
+
+- **BREAKING**: a 2xx whose body is not JSON threw a raw
+  `System.Text.Json.JsonException`; it now throws
+  `PoliPageInvalidResponseException` (above). An empty 2xx body from those
+  calls is `invalid_response` too.
+- **BREAKING**: `RenderToFileAsync` failures to write the file threw raw
+  `IOException` / `UnauthorizedAccessException`; they now throw `io_error`
+  (above).
+- **BREAKING**: `RequestTimeout` (or the call's `RequestOptions.RequestTimeout`)
+  bounds the presigned-URL PDF download. Before, only the download client's
+  `HttpClient.Timeout` (100 s by default) bounded the wait for the storage's
+  headers, and the PDF body had no bound. Now `Render.PdfAsync` and
+  `DocumentDescriptor.DownloadPdfAsync` are bounded for the whole download;
+  for `Render.PdfStreamAsync` and `RenderToFileAsync` it is an idle timeout,
+  the wait for the storage's answer and each read of the stream, so a large
+  PDF read at the caller's pace is not cut off. Raise `RequestTimeout` if your
+  PDFs take longer than it to download.
+- **BREAKING**: a download that outlasts its timeout throws
+  `PoliPageDownloadException` with the message
+  `Failed to download PDF: timeout` (was `Failed to download PDF: network error`).
+  No status, never retried. This includes the `HttpClient.Timeout` of a
+  `DownloadHttpClient` you inject, when it fires first.
+- The download client the SDK creates (when `DownloadHttpClient` is not set)
+  has no `HttpClient.Timeout` of its own any more: `RequestTimeout` bounds it,
+  so a `RequestTimeout` above 100 s now applies to downloads too.
+- `RenderToFileAsync` creates the missing parent directories, writes to a
+  temporary file in the target's directory and moves it over the target only
+  once the PDF is complete. When anything fails (the render, the download, the
+  write or a cancellation), the target is left as it was: an existing file
+  keeps its content and a missing one is not created. The directory and the
+  temporary file are prepared before the render, so a path that cannot be
+  written costs no render. So does an existing target that is not a regular
+  file (a directory, a FIFO, a device, a socket:
+  `Failed to write PDF: <target>: not a regular file`) or that the process
+  may not write (its mode for the effective user, or the `ReadOnly`
+  attribute on Windows): `io_error`, and the target is not replaced. The
+  target is checked from its attributes, never opened, so a FIFO cannot
+  block the call.
+- `RenderToFileAsync` on a symbolic link replaces the file the link points at
+  (a relative link resolved against the real directory that holds it), so the
+  link stays a link. An existing file keeps its permissions on Unix. The move
+  gives the file a new inode, so its owner becomes the user that writes it,
+  and a hard link to the old file keeps the old content.
+- **BREAKING**: `PoliPageErrorPayload` serializes with exactly the keys
+  `code`, `message`, `status` and `requestId`, the same in every Poli Page
+  SDK, whatever the `JsonSerializerOptions` naming policy. It followed the
+  serializer's naming before, so the default options wrote `Code`, `Message`,
+  `Status` and `RequestId`. The C# properties keep their names.
+
 ## [0.11.0] - 2026-10-30
 
 Conformance with the Poli Page API contract v1.3.0
@@ -281,7 +364,8 @@ First public release of the Poli Page .NET SDK. Targets `net8.0` and
 - Deterministic build, embedded symbols (PDBs inside the assembly), and
   Source Link via `Microsoft.SourceLink.GitHub`.
 
-[Unreleased]: https://github.com/poli-page/sdk-csharp/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/poli-page/sdk-csharp/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/poli-page/sdk-csharp/compare/v0.11.0...v0.13.0
 [0.11.0]: https://github.com/poli-page/sdk-csharp/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/poli-page/sdk-csharp/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/poli-page/sdk-csharp/compare/v0.9.0...v0.9.1

@@ -83,7 +83,7 @@ internal sealed class HttpTransport : ITransport
         var json = JsonSerializer.SerializeToUtf8Bytes(body, JsonOptions);
 #pragma warning restore IL2026, IL3050
 
-        return SendAsync(HttpMethod.Post, path, json, idempotencyKey, options, accept, cancellationToken);
+        return SendAsync(HttpMethod.Post, path, json, idempotencyKey, options, accept, expectsJson: true, cancellationToken);
     }
 
     /// <inheritdoc/>
@@ -91,12 +91,14 @@ internal sealed class HttpTransport : ITransport
         string path,
         RequestOptions? options,
         string accept,
+        bool expectsJson,
         CancellationToken cancellationToken)
-        => SendAsync(HttpMethod.Get, path, jsonBody: null, idempotencyKey: null, options, accept, cancellationToken);
+        => SendAsync(HttpMethod.Get, path, jsonBody: null, idempotencyKey: null, options, accept, expectsJson, cancellationToken);
 
     /// <inheritdoc/>
     public Task<HttpResponseMessage> DeleteAsync(string path, RequestOptions? options, CancellationToken cancellationToken)
-        => SendAsync(HttpMethod.Delete, path, jsonBody: null, idempotencyKey: null, options, "application/json", cancellationToken);
+        => SendAsync(
+            HttpMethod.Delete, path, jsonBody: null, idempotencyKey: null, options, "application/json", expectsJson: false, cancellationToken);
 
     private async Task<HttpResponseMessage> SendAsync(
         HttpMethod method,
@@ -105,17 +107,19 @@ internal sealed class HttpTransport : ITransport
         string? idempotencyKey,
         RequestOptions? options,
         string accept,
+        bool expectsJson,
         CancellationToken callerToken)
     {
         try
         {
-            return await SendWithRetriesAsync(method, path, jsonBody, idempotencyKey, options, accept, callerToken)
+            return await SendWithRetriesAsync(method, path, jsonBody, idempotencyKey, options, accept, expectsJson, callerToken)
                 .ConfigureAwait(false);
         }
         catch (PoliPageException ex)
         {
             // OnError fires once, with the error the SDK is about to throw: an API error, a
-            // network failure, a timeout, or `aborted` when the caller cancelled.
+            // network failure, a timeout, an invalid_response, or `aborted` when the caller
+            // cancelled.
             SafeFireOnError(ex);
             throw;
         }
@@ -128,6 +132,7 @@ internal sealed class HttpTransport : ITransport
         string? idempotencyKey,
         RequestOptions? options,
         string accept,
+        bool expectsJson,
         CancellationToken callerToken)
     {
         var attemptTimeout = options?.RequestTimeout ?? _defaultTimeout;
@@ -136,7 +141,7 @@ internal sealed class HttpTransport : ITransport
         for (var attempt = 1; ; attempt++)
         {
             var outcome = await SendOnceAsync(
-                    method, uri, jsonBody, idempotencyKey, options, accept, attempt, attemptTimeout, callerToken)
+                    method, uri, jsonBody, idempotencyKey, options, accept, expectsJson, attempt, attemptTimeout, callerToken)
                 .ConfigureAwait(false);
             if (outcome.Response is { } response)
                 return response;
@@ -170,6 +175,7 @@ internal sealed class HttpTransport : ITransport
         string? idempotencyKey,
         RequestOptions? options,
         string accept,
+        bool expectsJson,
         int attempt,
         TimeSpan attemptTimeout,
         CancellationToken callerToken)
@@ -199,7 +205,7 @@ internal sealed class HttpTransport : ITransport
             return AttemptOutcome.Failed(TransportFailure(ex, timeoutCts, attemptTimeout, callerToken), retryable: true);
         }
 
-        return await ReadAnswerAsync(response, t0, timeoutCts, attemptTimeout, attemptToken, callerToken)
+        return await ReadAnswerAsync(response, expectsJson, t0, timeoutCts, attemptTimeout, attemptToken, callerToken)
             .ConfigureAwait(false);
     }
 
@@ -209,6 +215,7 @@ internal sealed class HttpTransport : ITransport
     /// </summary>
     private async Task<AttemptOutcome> ReadAnswerAsync(
         HttpResponseMessage response,
+        bool expectsJson,
         long t0,
         CancellationTokenSource timeoutCts,
         TimeSpan attemptTimeout,
@@ -239,13 +246,20 @@ internal sealed class HttpTransport : ITransport
 
         if (response.IsSuccessStatusCode)
         {
-            ReplaceContent(response, body);
+            var requestId = response.Headers.TryGetValues("X-Request-Id", out var v) ? v.FirstOrDefault() : null;
             // After the body is read: DurationMs covers it, and a 2xx whose body failed
             // never fires the hook.
-            SafeFireOnResponse(new ResponseEvent(
-                status,
-                response.Headers.TryGetValues("X-Request-Id", out var v) ? v.FirstOrDefault() : null,
-                ElapsedMilliseconds(t0)));
+            SafeFireOnResponse(new ResponseEvent(status, requestId, ElapsedMilliseconds(t0)));
+
+            if (expectsJson && NotJson(body) is { } parseError)
+            {
+                // A proxy or a captive portal answered instead of the API, and would again:
+                // invalid_response, never retried.
+                response.Dispose();
+                return AttemptOutcome.Failed(SdkErrors.InvalidResponse(status, requestId, parseError), retryable: false);
+            }
+
+            ReplaceContent(response, body);
             return AttemptOutcome.Succeeded(response);
         }
 
@@ -291,7 +305,7 @@ internal sealed class HttpTransport : ITransport
     /// the caller's cancellation hold whatever HttpClient the caller injected. An
     /// abandoned response is disposed when it arrives.
     /// </summary>
-    private static async Task<T> BoundAsync<T>(Task<T> task, CancellationToken token)
+    internal static async Task<T> BoundAsync<T>(Task<T> task, CancellationToken token)
     {
         try
         {
@@ -367,6 +381,37 @@ internal sealed class HttpTransport : ITransport
         NoHiddenResend.Apply(request);
         return request;
     }
+
+    /// <summary>
+    /// The parser's error when <paramref name="body"/> is not one valid JSON value (an empty
+    /// body included), otherwise <see langword="null"/>. A UTF-8 byte order mark is skipped,
+    /// as the callers' decoding does.
+    /// </summary>
+    internal static JsonException? NotJson(byte[] body)
+    {
+        var json = body.AsSpan();
+        if (json.StartsWith(Utf8Bom))
+            json = json[Utf8Bom.Length..];
+
+        var reader = new Utf8JsonReader(json, new JsonReaderOptions { CommentHandling = JsonCommentHandling.Disallow });
+        try
+        {
+            if (!reader.Read() || !reader.TrySkip() || reader.Read())
+            {
+                // Empty, or not one complete value: Read() reports the trailing data above by
+                // throwing, so false here means nothing to read.
+                return new JsonException("The body is empty or not one complete JSON value.");
+            }
+
+            return null;
+        }
+        catch (JsonException ex)
+        {
+            return ex;
+        }
+    }
+
+    private static ReadOnlySpan<byte> Utf8Bom => [0xEF, 0xBB, 0xBF];
 
     /// <summary>Hands the caller the 2xx answer with its body already in memory.</summary>
     private static void ReplaceContent(HttpResponseMessage response, byte[] body)

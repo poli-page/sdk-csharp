@@ -37,11 +37,12 @@ When an attempt times out, the SDK records a `timeout` (`Request timed out after
 
 ## Download timeouts
 
-`RequestTimeout` bounds the API calls only. `Render.PdfAsync`, `Render.PdfStreamAsync`, `RenderToFileAsync` and `DocumentDescriptor.DownloadPdfAsync` then fetch the PDF from its presigned URL on a separate download client (`PoliPageClientOptions.DownloadHttpClient`). That client's `HttpClient.Timeout` (100 seconds for the client the SDK creates when you pass none) bounds only the wait for the storage's response headers.
+`Render.PdfAsync`, `Render.PdfStreamAsync`, `RenderToFileAsync` and `DocumentDescriptor.DownloadPdfAsync` fetch the PDF from its presigned URL on a separate download client (`PoliPageClientOptions.DownloadHttpClient`). The same `RequestTimeout` (or the call's `RequestOptions.RequestTimeout`) bounds that download too, whatever download client you inject:
 
-When that timeout fires, the SDK throws `PoliPageDownloadException` with `Code == PoliPageErrorCode.DownloadFailed` and the message `Failed to download PDF: network error` (no status, the `TaskCanceledException` as `InnerException`). The download is never retried.
+- `Render.PdfAsync` and `DownloadPdfAsync`: the whole download, the PDF's body included.
+- `Render.PdfStreamAsync` and `RenderToFileAsync`: the wait for the storage's answer, then each read of the stream. It is an idle timeout, not a total, so a large PDF read at your pace is never cut off. Before the answer, the call throws; mid-stream, the read throws.
 
-Once the headers have arrived, reading the PDF body has no SDK time bound: a storage answer that stalls mid-body waits until your `CancellationToken` fires. Pass one (for example a `CancellationTokenSource` with a timeout) to bound the whole download.
+Past it, the SDK throws `PoliPageDownloadException` with `Code == PoliPageErrorCode.DownloadFailed` and the message `Failed to download PDF: timeout` (no status). The download is never retried: call `Documents.GetAsync(id)` for a fresh presigned URL and download again. If the download client you inject has a shorter `HttpClient.Timeout`, it fires first for the wait for the storage's answer, with the same error.
 
 ```csharp
 try
