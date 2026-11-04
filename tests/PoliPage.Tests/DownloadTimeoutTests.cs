@@ -62,7 +62,8 @@ public sealed class DownloadTimeoutTests
     {
         await using var server = new MockServer(origin => [Descriptor(origin), MockStep.Hang]);
         using var client = new PoliPageClient(Options(server, timeout: Short));
-        var document = await client.Render.DocumentAsync(Input);
+        // A long timeout for the render, so only the download is under test.
+        var document = await client.Render.DocumentAsync(Input, new RequestOptions { RequestTimeout = TimeSpan.FromSeconds(60) });
 
         var act = () => document.DownloadPdfAsync();
 

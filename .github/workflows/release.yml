@@ -38,8 +38,8 @@ jobs:
 
       # The SDK shares its major.minor with the Poli Page API: a release X.Y.z
       # must pass the API contract X.Y. The script reads the contract commit
-      # ci.yml pins and requires a stable contract tag vX.Y.Z on it with the
-      # tag's major.minor.
+      # ci.yml and this workflow pin (they must agree) and requires a stable
+      # contract tag vX.Y.Z on it with the tag's major.minor.
       - name: Pinned API contract matches the tag's major.minor
         run: ./scripts/check-contract-version.sh "${GITHUB_REF_NAME}"
 

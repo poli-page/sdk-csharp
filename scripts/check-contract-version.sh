@@ -6,9 +6,10 @@
 #
 # The SDK shares its major.minor with the Poli Page API, so a release X.Y.z
 # must pass the API contract X.Y. This reads the contract commit pinned in
-# .github/workflows/ci.yml (never its `# vX.Y.Z` comment), lists the contract
-# repository's tags, and fails unless that commit carries a stable tag vX.Y.Z
-# with the release's major.minor. Patch numbers are free.
+# .github/workflows/ci.yml and release.yml (never their `# vX.Y.Z` comments),
+# fails when the two differ, lists the contract repository's tags, and fails
+# unless that commit carries a stable tag vX.Y.Z with the release's
+# major.minor. Patch numbers are free.
 #
 # Run by the Release workflow before anything is packed. API_CONTRACT_REMOTE
 # overrides the contract repository (to test the script against a local one).
@@ -16,7 +17,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WORKFLOW="$REPO_ROOT/.github/workflows/ci.yml"
+CI_WORKFLOW="$REPO_ROOT/.github/workflows/ci.yml"
+RELEASE_WORKFLOW="$REPO_ROOT/.github/workflows/release.yml"
 REMOTE="${API_CONTRACT_REMOTE:-https://github.com/poli-page/api-contract.git}"
 
 fail() { echo "check-contract-version: $1" >&2; exit 1; }
@@ -28,8 +30,17 @@ if ! [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
 fi
 release_minor="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
 
-contract_sha="$(sed -n 's|.*uses: poli-page/api-contract@\([0-9a-f]\{40\}\).*|\1|p' "$WORKFLOW" | head -n 1)"
+# Every pin in a workflow, one per line, deduplicated.
+pins() { sed -n 's|.*uses: poli-page/api-contract@\([0-9a-f]\{40\}\).*|\1|p' "$1" | sort -u; }
+
+contract_sha="$(pins "$CI_WORKFLOW")"
+release_sha="$(pins "$RELEASE_WORKFLOW")"
 [ -n "$contract_sha" ] || fail "no poli-page/api-contract pin found in .github/workflows/ci.yml"
+[ -n "$release_sha" ] || fail "no poli-page/api-contract pin found in .github/workflows/release.yml"
+# The release runs the contract suite on release.yml's pin: it must be the one checked here.
+if [ "$contract_sha" != "$release_sha" ] || [ "$(wc -l <<<"$contract_sha")" -ne 1 ]; then
+    fail "ci.yml pins API contract $(paste -sd ' ' - <<<"$contract_sha") but release.yml pins $(paste -sd ' ' - <<<"$release_sha"): pin the same commit in both"
+fi
 
 tags="$(git ls-remote --tags "$REMOTE")" || fail "cannot list the tags of $REMOTE"
 

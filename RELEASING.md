@@ -10,8 +10,9 @@ SDK alone is a patch, whatever the API's patch. A change of the API contract,
 a new SDK feature and a raise of the minimum .NET version are each a minor.
 The SDK may skip minors when it has nothing to ship for one. The Release
 workflow refuses a tag whose major.minor differs from the contract version
-pinned in `.github/workflows/ci.yml` (`scripts/check-contract-version.sh`,
-which you can also run locally: `scripts/check-contract-version.sh X.Y.Z`).
+pinned in `.github/workflows/ci.yml` and `release.yml`, which must pin the
+same commit (`scripts/check-contract-version.sh`, which you can also run
+locally: `scripts/check-contract-version.sh X.Y.Z`).
 
 ## Steps
 
