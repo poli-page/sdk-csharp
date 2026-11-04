@@ -254,7 +254,7 @@ public sealed class RenderToFileTests : IDisposable
         server.Requests.Should().BeEmpty();
     }
 
-    [WritableTargetCheckFact]
+    [UnixNonRootFact]
     [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
     public async Task The_owner_write_bit_decides_for_the_owner_whatever_the_others_bits()
     {
@@ -371,6 +371,18 @@ public sealed class WritableTargetCheckFactAttribute : FactAttribute
     public WritableTargetCheckFactAttribute()
     {
         if (!OperatingSystem.IsWindows() && Environment.IsPrivilegedProcess)
+            Skip = "root can write a read-only file.";
+    }
+}
+
+/// <summary>Unix only (it sets Unix modes), and skipped with an effective uid of 0.</summary>
+public sealed class UnixNonRootFactAttribute : FactAttribute
+{
+    public UnixNonRootFactAttribute()
+    {
+        if (OperatingSystem.IsWindows())
+            Skip = "Unix only: it sets Unix file modes.";
+        else if (Environment.IsPrivilegedProcess)
             Skip = "root can write a read-only file.";
     }
 }
