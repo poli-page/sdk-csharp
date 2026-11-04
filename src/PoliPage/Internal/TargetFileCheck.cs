@@ -46,21 +46,47 @@ internal static class TargetFileCheck
     private static (bool IsRegular, bool IsWritable) Inspect(string path)
     {
         if (!OperatingSystem.IsWindows() && Native.TryStat(path, out var status))
-            return ((status.Mode & StatFileTypeMask) == StatRegularFile, Native.MayWrite(status));
+            return (IsRegular(status.Mode), MayWrite(status, Native.GetEffectiveUserId(), Native.InGroup));
 
-        var attributes = File.GetAttributes(path);
+        return FromAttributes(File.GetAttributes(path), privileged: !OperatingSystem.IsWindows() && Environment.IsPrivilegedProcess);
+    }
+
+    /// <summary>Whether a <c>stat</c> mode is a regular file's.</summary>
+    internal static bool IsRegular(int mode) => (mode & StatFileTypeMask) == StatRegularFile;
+
+    /// <summary>
+    /// Whether <paramref name="status"/> lets the effective user <paramref name="userId"/> write
+    /// the file: root always, the owner by the owner's bit, a member of the file's group by the
+    /// group's bit, anyone else by the others' bit.
+    /// </summary>
+    internal static bool MayWrite(FileStatus status, uint userId, Func<uint, bool> inGroup)
+    {
+        if (userId == 0)
+            return true;
+        if (status.Uid == userId)
+            return (status.Mode & OwnerWrite) != 0;
+        if (inGroup(status.Gid))
+            return (status.Mode & GroupWrite) != 0;
+        return (status.Mode & OtherWrite) != 0;
+    }
+
+    /// <summary>
+    /// The check from <see cref="FileAttributes"/> alone: on Windows, and on a Unix whose status
+    /// the SDK cannot read (where <c>ReadOnly</c> is the mode's write bit for the effective user,
+    /// which <paramref name="privileged"/>, root, may ignore).
+    /// </summary>
+    internal static (bool IsRegular, bool IsWritable) FromAttributes(FileAttributes attributes, bool privileged)
+    {
         var isRegular = !attributes.HasFlag(FileAttributes.Directory) && !attributes.HasFlag(FileAttributes.Device);
-        // On Unix, the ReadOnly attribute is the mode's write bit for the effective user.
-        var isWritable = !attributes.HasFlag(FileAttributes.ReadOnly)
-            || (!OperatingSystem.IsWindows() && Environment.IsPrivilegedProcess);
+        var isWritable = !attributes.HasFlag(FileAttributes.ReadOnly) || privileged;
         return (isRegular, isWritable);
     }
 
     /// <summary>The fields of a file's status the check reads.</summary>
     [StructLayout(LayoutKind.Auto)]
-    private readonly record struct FileStatus(int Mode, uint Uid, uint Gid);
+    internal readonly record struct FileStatus(int Mode, uint Uid, uint Gid);
 
-    private static class Native
+    internal static class Native
     {
         private const int AtCurrentDirectory = -100; // AT_FDCWD on Linux; ignored for an absolute path
         private const uint StatxBasicFields = 0x01 | 0x02 | 0x08 | 0x10; // STATX_TYPE | STATX_MODE | STATX_UID | STATX_GID
@@ -106,20 +132,8 @@ internal static class TargetFileCheck
             return false;
         }
 
-        /// <summary>Whether the mode lets the process's effective user write the file.</summary>
-        internal static bool MayWrite(FileStatus status)
-        {
-            var userId = GetEffectiveUserId();
-            if (userId == 0)
-                return true;
-            if (status.Uid == userId)
-                return (status.Mode & OwnerWrite) != 0;
-            if (InGroup(status.Gid))
-                return (status.Mode & GroupWrite) != 0;
-            return (status.Mode & OtherWrite) != 0;
-        }
-
-        private static bool InGroup(uint groupId)
+        /// <summary>Whether <paramref name="groupId"/> is the process's effective group or one of its groups.</summary>
+        internal static bool InGroup(uint groupId)
         {
             if (GetEffectiveGroupId() == groupId)
                 return true;
@@ -165,11 +179,11 @@ internal static class TargetFileCheck
 
         [DllImport("libc", EntryPoint = "geteuid")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
-        private static extern uint GetEffectiveUserId();
+        internal static extern uint GetEffectiveUserId();
 
         [DllImport("libc", EntryPoint = "getegid")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
-        private static extern uint GetEffectiveGroupId();
+        internal static extern uint GetEffectiveGroupId();
 
         [DllImport("libc", EntryPoint = "getgroups")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
