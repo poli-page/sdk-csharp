@@ -38,8 +38,9 @@ also creates the missing parent directories, and leaves the target untouched
 on any failure. It writes a temporary file and moves it into place: a
 symbolic link stays a link and the file it points at is replaced, an existing
 file keeps its Unix permissions, but its owner becomes the user that writes
-it and a hard link to the old file keeps the old content. A read-only target
-is `io_error`, raised before the render.
+it and a hard link to the old file keeps the old content. A read-only target,
+or one that is not a regular file (a directory, a FIFO, a device), is
+`io_error`, raised before the render.
 
 ```csharp
 // 0.11.0

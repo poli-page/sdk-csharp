@@ -298,8 +298,10 @@ public sealed class PoliPageClient : IDisposable
     /// render, the download, the write or a cancellation), the target is left as it was: an
     /// existing file keeps its content and a missing one is not created. The directory and
     /// the temporary file are prepared before the render, so a path that cannot be written
-    /// costs no render; so does an existing file that cannot be written (read-only, or a
-    /// directory), which is <c>io_error</c> and is not replaced. A <paramref name="path"/>
+    /// costs no render; so does an existing target that is not a regular file (a directory, a
+    /// FIFO, a device, a socket: <c>Failed to write PDF: &lt;target&gt;: not a regular file</c>)
+    /// or that the process may not write, which is <c>io_error</c> and is not replaced. The
+    /// target is checked from its attributes, never opened. A <paramref name="path"/>
     /// that is a symbolic link is resolved (a relative link against the real directory that
     /// holds it): the file it points at is replaced and the link stays a link. An existing file keeps its
     /// permissions on Unix, but the move gives it a new inode: its owner becomes the writing
@@ -337,6 +339,12 @@ public sealed class PoliPageClient : IDisposable
                 try
                 {
                     await pdf.CopyToAsync(file.Stream, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
+                {
+                    // The stream's copy already maps a cancelled read or write to aborted; this
+                    // keeps any other cancellation on the way out of the copy the same error.
+                    throw SdkErrors.Aborted(ex);
                 }
                 catch (Exception ex) when (ex is not PoliPageException && SdkErrors.IsFileSystemFailure(ex))
                 {

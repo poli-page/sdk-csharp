@@ -72,8 +72,13 @@ guide.
   write or a cancellation), the target is left as it was: an existing file
   keeps its content and a missing one is not created. The directory and the
   temporary file are prepared before the render, so a path that cannot be
-  written costs no render; so does an existing file that cannot be written
-  (read-only, or a directory), which is `io_error` and is not replaced.
+  written costs no render. So does an existing target that is not a regular
+  file (a directory, a FIFO, a device, a socket:
+  `Failed to write PDF: <target>: not a regular file`) or that the process
+  may not write (its mode for the effective user, or the `ReadOnly`
+  attribute on Windows): `io_error`, and the target is not replaced. The
+  target is checked from its attributes, never opened, so a FIFO cannot
+  block the call.
 - `RenderToFileAsync` on a symbolic link replaces the file the link points at
   (a relative link resolved against the real directory that holds it), so the
   link stays a link. An existing file keeps its permissions on Unix. The move

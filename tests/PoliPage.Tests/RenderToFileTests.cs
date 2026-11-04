@@ -35,6 +35,28 @@ public sealed class RenderToFileTests : IDisposable
 
     private static MockStep PdfAnswer() => Bytes(200, Pdf, "application/pdf");
 
+    /// <summary>The path with its links resolved (the temporary directory may sit behind one, as on macOS).</summary>
+    private static string ResolvedPath(string path)
+    {
+        var directory = new DirectoryInfo(Path.GetDirectoryName(path)!);
+        var parts = new Stack<string>();
+        for (var d = directory; d is not null; d = d.Parent)
+        {
+            if (d.LinkTarget is not null)
+                return Path.Combine([d.ResolveLinkTarget(returnFinalTarget: true)!.FullName, .. parts, Path.GetFileName(path)]);
+            parts.Push(d.Name);
+        }
+
+        return path;
+    }
+
+    private static void MakeFifo(string path)
+    {
+        using var mkfifo = System.Diagnostics.Process.Start("mkfifo", [path])!;
+        mkfifo.WaitForExit();
+        mkfifo.ExitCode.Should().Be(0, "mkfifo creates the FIFO");
+    }
+
     private string[] Entries(string? directory = null)
         => [.. Directory.EnumerateFileSystemEntries(directory ?? _directory).Select(Path.GetFileName).Order(StringComparer.Ordinal)!];
 
@@ -118,7 +140,10 @@ public sealed class RenderToFileTests : IDisposable
 
         var act = () => client.RenderToFileAsync(Input, target);
 
-        ShouldBeIoError((await act.Should().ThrowAsync<PoliPageException>()).Which);
+        var thrown = await act.Should().ThrowAsync<PoliPageException>();
+        ShouldBeIoError(thrown.Which);
+        thrown.Which.Message.Should().Be($"Failed to write PDF: {thrown.Which.InnerException!.Message}")
+            .And.EndWith(": not a regular file");
         server.Requests.Should().BeEmpty("a target that cannot be written costs no render");
         Directory.Exists(target).Should().BeTrue();
         Entries(target).Should().Equal("keep");
@@ -194,6 +219,58 @@ public sealed class RenderToFileTests : IDisposable
 
         (await File.ReadAllBytesAsync(path)).Should().Equal(Pdf);
         File.GetUnixFileMode(path).Should().Be(Mode);
+    }
+
+    [UnixFact]
+    public async Task A_FIFO_target_is_io_error_at_once_and_is_never_opened()
+    {
+        await using var server = new MockServer(origin => [Descriptor(origin), PdfAnswer()]);
+        using var client = new PoliPageClient(Options(server));
+        var fifo = Path.Combine(_directory, "invoice.pdf");
+        MakeFifo(fifo);
+
+        // Opening a FIFO with no reader blocks: a hang fails the test instead of the run.
+        var act = () => client.RenderToFileAsync(Input, fifo).WaitAsync(TimeSpan.FromSeconds(10));
+
+        var thrown = await act.Should().ThrowAsync<PoliPageException>();
+        ShouldBeIoError(thrown.Which);
+        thrown.Which.Message.Should().Be($"Failed to write PDF: {ResolvedPath(fifo)}: not a regular file");
+        server.Requests.Should().BeEmpty("a target that cannot be written costs no render");
+        Entries().Should().Equal("invoice.pdf");
+        File.GetAttributes(fifo).HasFlag(FileAttributes.Directory).Should().BeFalse();
+    }
+
+    [UnixFact]
+    public async Task A_device_target_is_io_error_before_any_render()
+    {
+        await using var server = new MockServer(origin => [Descriptor(origin), PdfAnswer()]);
+        using var client = new PoliPageClient(Options(server));
+
+        var act = () => client.RenderToFileAsync(Input, "/dev/null");
+
+        var thrown = await act.Should().ThrowAsync<PoliPageException>();
+        ShouldBeIoError(thrown.Which);
+        thrown.Which.Message.Should().Be("Failed to write PDF: /dev/null: not a regular file");
+        server.Requests.Should().BeEmpty();
+    }
+
+    [WritableTargetCheckFact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    public async Task The_owner_write_bit_decides_for_the_owner_whatever_the_others_bits()
+    {
+        await using var server = new MockServer(origin => [Descriptor(origin), PdfAnswer()]);
+        using var client = new PoliPageClient(Options(server));
+        var path = Path.Combine(_directory, "invoice.pdf");
+        await File.WriteAllBytesAsync(path, Previous);
+        // r---w--w-: others may write, the owner (this process) may not.
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.GroupWrite | UnixFileMode.OtherWrite);
+
+        var act = () => client.RenderToFileAsync(Input, path);
+
+        ShouldBeIoError((await act.Should().ThrowAsync<PoliPageException>()).Which);
+        server.Requests.Should().BeEmpty();
+        File.SetUnixFileMode(path, UnixFileMode.UserRead);
+        (await File.ReadAllBytesAsync(path)).Should().Equal(Previous);
     }
 
     [WritableTargetCheckFact]
@@ -288,12 +365,12 @@ public sealed class UnixFactAttribute : FactAttribute
     }
 }
 
-/// <summary>Skipped as root on Unix, where a read-only mode does not stop a write.</summary>
+/// <summary>Skipped on Unix with an effective uid of 0, which a read-only mode does not stop.</summary>
 public sealed class WritableTargetCheckFactAttribute : FactAttribute
 {
     public WritableTargetCheckFactAttribute()
     {
-        if (!OperatingSystem.IsWindows() && string.Equals(Environment.UserName, "root", StringComparison.Ordinal))
+        if (!OperatingSystem.IsWindows() && Environment.IsPrivilegedProcess)
             Skip = "root can write a read-only file.";
     }
 }

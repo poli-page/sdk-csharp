@@ -11,8 +11,9 @@ namespace PoliPage.Internal;
 /// <remarks>
 /// A target that is a symbolic link is resolved first, a relative link against the real
 /// directory that holds it: the file it points at is the one replaced, so the link stays a
-/// link. An existing target that cannot be written (read-only, or a directory) fails at once,
-/// before anything is written. An existing target keeps its permissions on Unix (its
+/// link. An existing target that is not a regular file (a directory, a FIFO, a device, a
+/// socket) or that the process may not write fails at once, before anything is written,
+/// from its attributes: it is never opened. An existing target keeps its permissions on Unix (its
 /// mode is copied onto the temporary file before the move). The move gives the target a new
 /// inode, so its owner becomes the writing user and any hard link to the old file keeps the
 /// old content.
@@ -43,7 +44,8 @@ internal sealed class AtomicFileWriter : IAsyncDisposable
         try
         {
             var targetPath = ResolveLinks(path);
-            EnsureWritableTarget(targetPath);
+            // Before any render: from its attributes, never by opening it (a FIFO would block).
+            TargetFileCheck.EnsureReplaceable(targetPath);
             var directory = Path.GetDirectoryName(targetPath) ?? targetPath;
             Directory.CreateDirectory(directory);
 
@@ -129,20 +131,6 @@ internal sealed class AtomicFileWriter : IAsyncDisposable
         }
 
         return current;
-    }
-
-    /// <summary>
-    /// Fails now, before any render, when the target exists but cannot be written: a
-    /// read-only file, or a directory. The rename would replace a read-only file, so this
-    /// opens it for writing (without truncating it) to ask the file system.
-    /// </summary>
-    private static void EnsureWritableTarget(string targetPath)
-    {
-        if (!File.Exists(targetPath) && !Directory.Exists(targetPath))
-            return;
-
-        using var probe = new FileStream(
-            targetPath, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
     }
 
     /// <summary>On Unix, gives the temporary file the mode of the target it replaces.</summary>
