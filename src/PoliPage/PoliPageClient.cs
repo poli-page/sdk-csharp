@@ -158,7 +158,7 @@ public sealed class PoliPageClient : IDisposable
     /// </summary>
     internal async Task<byte[]> DownloadAsync(string url, TimeSpan? timeout, CancellationToken cancellationToken)
     {
-        using var timeoutCts = new CancellationTokenSource(timeout ?? _requestTimeout);
+        using var timeoutCts = new FullTimeout(timeout ?? _requestTimeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
         var token = linkedCts.Token;
 
@@ -215,7 +215,7 @@ public sealed class PoliPageClient : IDisposable
     /// </summary>
     private async Task<HttpResponseMessage> SendDownloadAsync(
         HttpRequestMessage request,
-        CancellationTokenSource timeoutCts,
+        FullTimeout timeoutCts,
         CancellationToken token,
         CancellationToken cancellationToken)
     {
@@ -242,7 +242,7 @@ public sealed class PoliPageClient : IDisposable
     internal async Task<Stream> DownloadStreamAsync(string url, TimeSpan? timeout, CancellationToken cancellationToken)
     {
         var idleTimeout = timeout ?? _requestTimeout;
-        using var timeoutCts = new CancellationTokenSource(idleTimeout);
+        using var timeoutCts = new FullTimeout(idleTimeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
         var token = linkedCts.Token;
 
