@@ -71,7 +71,8 @@ function clean(s: string | undefined): string {
 
 function stripPrefix(cref: string): string {
   // T:Foo.Bar -> Foo.Bar; M:Foo.Bar.Baz -> Foo.Bar.Baz.
-  return cref.replace(/^[A-Z]:/, '');
+  // A method id carries its parameter types: M:Foo.Bar(System.String) -> Foo.Bar.
+  return cref.replace(/^[A-Z]:/, '').replace(/\(.*\)$/, '');
 }
 
 export function firstSentence(text: string): string {
