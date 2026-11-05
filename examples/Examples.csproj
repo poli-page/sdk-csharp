@@ -32,7 +32,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\src\PoliPage\PoliPage.csproj" />
+    <!-- Example is dropped for the reference so the SDK is built once, not once per example (parallel builds of one obj/ race). -->
+    <ProjectReference Include="..\src\PoliPage\PoliPage.csproj" GlobalPropertiesToRemove="Example" />
   </ItemGroup>
 
   <Import Sdk="Microsoft.NET.Sdk" Project="Sdk.targets" />
