@@ -1,12 +1,12 @@
 export const LANGUAGES = {
+    // C# added locally; the upstream preset has no csharp entry yet.
+    csharp: { id: 'csharp', displayName: 'C#', exampleExt: '.cs', packageKind: 'nuget' },
     go: { id: 'go', displayName: 'Go', exampleExt: '.go', packageKind: 'go-module' },
     node: { id: 'node', displayName: 'Node.js', exampleExt: '.ts', packageKind: 'npm' },
     php: { id: 'php', displayName: 'PHP', exampleExt: '.php', packageKind: 'composer' },
     python: { id: 'python', displayName: 'Python', exampleExt: '.py', packageKind: 'pypi' },
     ruby: { id: 'ruby', displayName: 'Ruby', exampleExt: '.rb', packageKind: 'rubygems' },
     rust: { id: 'rust', displayName: 'Rust', exampleExt: '.rs', packageKind: 'crate' },
-    // C# added locally for sdk-csharp; sync upstream when the preset adopts it.
-    csharp: { id: 'csharp', displayName: 'C#', exampleExt: '.cs', packageKind: 'nuget' },
 };
 export function getLanguage(id) {
     const lang = LANGUAGES[id];
@@ -14,4 +14,3 @@ export function getLanguage(id) {
         throw new Error(`unknown language: ${String(id)}`);
     return lang;
 }
-//# sourceMappingURL=languages.js.map

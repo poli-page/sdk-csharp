@@ -15,6 +15,7 @@ import {
   PUBLIC_EXCEPTIONS,
   CLIENT_TYPE,
 } from './registry.js';
+import { assertErrorCodesExist, assertMethodCoverage } from './coverage.js';
 import { buildClientPage } from './client-page.js';
 import { buildMethodPages } from './method-pages.js';
 import { buildTypesPage } from './types-page.js';
@@ -74,6 +75,12 @@ function tryBuildXmlDocs(): XmlDocMember[] | null {
 
 function run(): void {
   const version = readVersion();
+
+  assertMethodCoverage(PUBLIC_METHODS, REPO_ROOT);
+  assertErrorCodesExist(
+    PUBLIC_METHODS,
+    readFileSync(resolve(REPO_ROOT, 'src', 'PoliPage', 'PoliPageErrorCode.cs'), 'utf8'),
+  );
 
   if (existsSync(REFERENCE_OUT)) rmSync(REFERENCE_OUT, { recursive: true, force: true });
   mkdirSync(REFERENCE_OUT, { recursive: true });

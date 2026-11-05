@@ -53,6 +53,56 @@ export const CLIENT_TYPE: PublicType = {
   kind: 'class',
 };
 
+// Wire-level codes (PoliPageErrorCode constants) each method can surface. Every
+// entry is checked against PoliPageErrorCode.cs by `assertErrorCodesExist`.
+const COMMON_ERRORS = [
+  'MISSING_API_KEY',
+  'INVALID_API_KEY',
+  'FORBIDDEN',
+  'RATE_LIMIT_EXCEEDED',
+  'timeout',
+  'network_error',
+  'aborted',
+  'UNKNOWN',
+] as const;
+const RENDER_ERRORS = [
+  ...COMMON_ERRORS,
+  'PROJECT_NOT_FOUND',
+  'TEMPLATE_NOT_FOUND',
+  'VALIDATION_ERROR',
+  'invalid_response',
+] as const;
+const RENDER_DOWNLOAD_ERRORS = [...RENDER_ERRORS, 'DOWNLOAD_FAILED'] as const;
+const DOCUMENT_ERRORS = [...COMMON_ERRORS, 'DOCUMENT_NOT_FOUND'] as const;
+
+const INPUT_PARAM: PublicParam = {
+  name: 'input',
+  type: 'RenderInput',
+  required: true,
+  description:
+    'The project, template and data to render (Project + Template + Data), plus optional Metadata, Format, Orientation and Locale.',
+};
+const DOCUMENT_ID_PARAM: PublicParam = {
+  name: 'documentId',
+  type: 'string',
+  required: true,
+  description: 'The server-issued document identifier (e.g. `doc_…`).',
+};
+const OPTIONS_PARAM: PublicParam = {
+  name: 'options',
+  type: 'RequestOptions?',
+  required: false,
+  description: 'Per-call overrides (IdempotencyKey, RequestTimeout, extra headers). Defaults to null.',
+  defaultValue: 'null',
+};
+const CANCEL_PARAM: PublicParam = {
+  name: 'cancellationToken',
+  type: 'CancellationToken',
+  required: false,
+  description: 'Token to cancel the operation.',
+  defaultValue: 'default',
+};
+
 export const PUBLIC_METHODS: readonly PublicMethod[] = [
   {
     slug: 'render-pdf',
@@ -62,38 +112,117 @@ export const PUBLIC_METHODS: readonly PublicMethod[] = [
     exampleFile: 'render-pdf.cs',
     signature:
       'Task<byte[]> PdfAsync(RenderInput input, RequestOptions? options = null, CancellationToken cancellationToken = default)',
+    parameters: [INPUT_PARAM, OPTIONS_PARAM, CANCEL_PARAM],
+    returns: '`Task<byte[]>` — the raw PDF bytes.',
+    errorCodes: RENDER_DOWNLOAD_ERRORS,
+  },
+  {
+    slug: 'render-pdf-stream',
+    displayName: 'client.Render.PdfStreamAsync',
+    memberId:
+      'M:PoliPage.Render.PdfStreamAsync(PoliPage.RenderInput,PoliPage.RequestOptions,System.Threading.CancellationToken)',
+    exampleFile: 'render-pdf-stream.cs',
+    signature:
+      'Task<Stream> PdfStreamAsync(RenderInput input, RequestOptions? options = null, CancellationToken cancellationToken = default)',
+    parameters: [INPUT_PARAM, OPTIONS_PARAM, CANCEL_PARAM],
+    returns:
+      '`Task<Stream>` — a read-only stream of the PDF. It owns the underlying response: dispose it.',
+    errorCodes: RENDER_DOWNLOAD_ERRORS,
+  },
+  {
+    slug: 'render-document',
+    displayName: 'client.Render.DocumentAsync',
+    memberId:
+      'M:PoliPage.Render.DocumentAsync(PoliPage.RenderInput,PoliPage.RequestOptions,System.Threading.CancellationToken)',
+    exampleFile: 'render-document.cs',
+    signature:
+      'Task<DocumentDescriptor> DocumentAsync(RenderInput input, RequestOptions? options = null, CancellationToken cancellationToken = default)',
+    parameters: [INPUT_PARAM, OPTIONS_PARAM, CANCEL_PARAM],
+    returns:
+      '`Task<DocumentDescriptor>` — the stored document, with a short-lived `PresignedPdfUrl`.',
+    errorCodes: RENDER_ERRORS,
+  },
+  {
+    slug: 'render-to-file',
+    displayName: 'client.RenderToFileAsync',
+    memberId:
+      'M:PoliPage.PoliPageClient.RenderToFileAsync(PoliPage.RenderInput,System.String,PoliPage.RequestOptions,System.Threading.CancellationToken)',
+    exampleFile: 'render-to-file.cs',
+    signature:
+      'Task RenderToFileAsync(RenderInput input, string path, RequestOptions? options = null, CancellationToken cancellationToken = default)',
     parameters: [
+      INPUT_PARAM,
       {
-        name: 'input',
-        type: 'RenderInput',
+        name: 'path',
+        type: 'string',
         required: true,
-        description: 'The project, template and data to render (Project + Template + Data), plus optional Metadata, Format, Orientation and Locale.',
+        description: 'Destination file path. Existing files are overwritten.',
       },
+      OPTIONS_PARAM,
+      CANCEL_PARAM,
+    ],
+    returns: '',
+    errorCodes: [...RENDER_DOWNLOAD_ERRORS, 'io_error'],
+  },
+  {
+    slug: 'documents-get',
+    displayName: 'client.Documents.GetAsync',
+    memberId:
+      'M:PoliPage.Documents.GetAsync(System.String,PoliPage.RequestOptions,System.Threading.CancellationToken)',
+    exampleFile: 'documents-get.cs',
+    signature:
+      'Task<DocumentDescriptor> GetAsync(string documentId, RequestOptions? options = null, CancellationToken cancellationToken = default)',
+    parameters: [DOCUMENT_ID_PARAM, OPTIONS_PARAM, CANCEL_PARAM],
+    returns: '`Task<DocumentDescriptor>` — the document, with a fresh `PresignedPdfUrl`.',
+    errorCodes: [...DOCUMENT_ERRORS, 'DOCUMENT_GONE', 'invalid_response'],
+  },
+  {
+    slug: 'documents-delete',
+    displayName: 'client.Documents.DeleteAsync',
+    memberId:
+      'M:PoliPage.Documents.DeleteAsync(System.String,PoliPage.RequestOptions,System.Threading.CancellationToken)',
+    exampleFile: 'documents-delete.cs',
+    signature:
+      'Task DeleteAsync(string documentId, RequestOptions? options = null, CancellationToken cancellationToken = default)',
+    parameters: [DOCUMENT_ID_PARAM, OPTIONS_PARAM, CANCEL_PARAM],
+    returns: '',
+    errorCodes: DOCUMENT_ERRORS,
+  },
+  {
+    slug: 'documents-preview',
+    displayName: 'client.Documents.PreviewAsync',
+    memberId:
+      'M:PoliPage.Documents.PreviewAsync(System.String,PoliPage.RequestOptions,System.Threading.CancellationToken)',
+    exampleFile: 'documents-preview.cs',
+    signature:
+      'Task<DocumentPreviewResult> PreviewAsync(string documentId, RequestOptions? options = null, CancellationToken cancellationToken = default)',
+    parameters: [DOCUMENT_ID_PARAM, OPTIONS_PARAM, CANCEL_PARAM],
+    returns: '`Task<DocumentPreviewResult>` — the HTML body (`Html`) and the page count (`PageCount`).',
+    errorCodes: [...DOCUMENT_ERRORS, 'DOCUMENT_GONE'],
+  },
+  {
+    slug: 'documents-thumbnails',
+    displayName: 'client.Documents.ThumbnailsAsync',
+    memberId:
+      'M:PoliPage.Documents.ThumbnailsAsync(System.String,PoliPage.ThumbnailOptions,PoliPage.RequestOptions,System.Threading.CancellationToken)',
+    exampleFile: 'documents-thumbnails.cs',
+    signature:
+      'Task<IReadOnlyList<Thumbnail>> ThumbnailsAsync(string documentId, ThumbnailOptions? thumbnailOptions = null, RequestOptions? options = null, CancellationToken cancellationToken = default)',
+    parameters: [
+      DOCUMENT_ID_PARAM,
       {
-        name: 'options',
-        type: 'RequestOptions?',
+        name: 'thumbnailOptions',
+        type: 'ThumbnailOptions?',
         required: false,
-        description: 'Per-call overrides (IdempotencyKey, RequestTimeout, extra headers). Defaults to null.',
+        description:
+          'Optional Width, Format, Quality and Pages. Null, or options with nothing set, sends `{}` so every API default applies.',
         defaultValue: 'null',
       },
-      {
-        name: 'cancellationToken',
-        type: 'CancellationToken',
-        required: false,
-        description: 'Token to cancel the operation.',
-        defaultValue: 'default',
-      },
+      OPTIONS_PARAM,
+      CANCEL_PARAM,
     ],
-    returns: '`Task<byte[]>` — the raw PDF bytes.',
-    errorCodes: [
-      'UNAUTHORIZED',
-      'NOT_FOUND',
-      'VALIDATION',
-      'RATE_LIMIT',
-      'TIMEOUT',
-      'NETWORK',
-      'UNKNOWN',
-    ],
+    returns: '`Task<IReadOnlyList<Thumbnail>>` — one `Thumbnail` per page of the source document.',
+    errorCodes: [...DOCUMENT_ERRORS, 'THUMBNAILS_NOT_AVAILABLE', 'invalid_response'],
   },
 ];
 
