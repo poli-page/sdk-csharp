@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The attempt timeout, the download timeout and the idle timeout of a streamed
+  download never fire early. They used `CancellationTokenSource(timeout)`, which
+  reads a coarse clock (about 15.6 ms on Windows) and can wake up to one tick
+  before the bound; they now wait again for the rest, as the retry sleep does.
+
 ## [0.13.0] - 2026-11-02
 
 Conformance with the Poli Page API contract v0.13.0
