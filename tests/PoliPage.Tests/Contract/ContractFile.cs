@@ -10,7 +10,7 @@ namespace PoliPage.Tests.Contract;
 internal sealed class ContractFile
 {
     /// <summary>The contract.json layout this harness reads.</summary>
-    public const int FormatVersion = 1;
+    public const int FormatVersion = 2;
 
     /// <summary>This SDK's name in <c>policy.cancellationSdks</c>.</summary>
     public const string SdkName = "csharp";

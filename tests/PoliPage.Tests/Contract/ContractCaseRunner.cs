@@ -1,6 +1,7 @@
 // The harness converts between JSON and the SDK's types with reflection-based
 // System.Text.Json, as the other tests do; trimming and AOT do not apply to test code.
 #pragma warning disable IL2026, IL3050
+using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -62,7 +63,7 @@ internal static partial class ContractCaseRunner
     private static readonly string[] OptionFields = ["maxRetries", "retryDelayMs", "timeoutMs"];
     private static readonly string[] CallFields = ["method", "args", "cancelAfterMs"];
     private static readonly string[] AnswerFields = ["status", "headers", "json", "text", "base64"];
-    private static readonly string[] ExpectFields = ["requests", "events", "result"];
+    private static readonly string[] ExpectFields = ["requests", "events", "result", "minCallMs"];
     private static readonly string[] BodyFields = ["json", "text", "base64"];
 
     [GeneratedRegex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", RegexOptions.CultureInvariant)]
@@ -126,6 +127,8 @@ internal static partial class ContractCaseRunner
         var substitutedRequests = (JsonArray)Placeholders.Substitute(wantRequests, origin)!;
         AddDiff(problems, "requests", DescribeRequests(server.Requests, substitutedRequests, apiKey), substitutedRequests);
         AddDiff(problems, "OnRequest / OnRetry events", DescribeEvents(observed.Snapshot(), wantEvents), wantEvents);
+        if (expect["minCallMs"] is { } minCall)
+            AddDiff(problems, "minCallMs", MinCall(outcome, minCall.GetValue<double>()), minCall.DeepClone());
         if (checkResult)
         {
             var gotResult = outcome.Error is { } error
@@ -148,7 +151,7 @@ internal static partial class ContractCaseRunner
     // Calling the SDK
     // ------------------------------------------------------------------ //
 
-    private sealed record Outcome(JsonNode? Value, Exception? Error, bool TimedOut);
+    private sealed record Outcome(JsonNode? Value, Exception? Error, bool TimedOut, long ElapsedTicks = 0);
 
     /// <summary>The hook events, in order, as the contract shapes them.</summary>
     private sealed class Observed(List<JsonObject> events)
@@ -216,8 +219,18 @@ internal static partial class ContractCaseRunner
             if (cancelAfterMs is { } ms)
                 cts.CancelAfter(ms);
 
-            var value = await InvokeAsync(client, method, args, cts.Token).WaitAsync(CaseTimeout);
-            return new Outcome(value, null, false);
+            // The clock starts right before the call and stops when it returns or throws,
+            // before anything is compared or the mock closes (sdk-specification.md §12.1).
+            var start = Stopwatch.GetTimestamp();
+            try
+            {
+                var value = await InvokeAsync(client, method, args, cts.Token).WaitAsync(CaseTimeout);
+                return new Outcome(value, null, false, Stopwatch.GetTimestamp() - start);
+            }
+            catch (Exception ex) when (ex is not (TimeoutException or ContractCaseException or JsonException))
+            {
+                return new Outcome(null, ex, false, Stopwatch.GetTimestamp() - start);
+            }
         }
         catch (TimeoutException)
         {
@@ -226,7 +239,7 @@ internal static partial class ContractCaseRunner
         }
         catch (Exception ex) when (ex is not (ContractCaseException or JsonException))
         {
-            // The SDK's error, from the constructor or the call. An error that is not a
+            // The SDK's error, from the constructor. An error that is not a
             // PoliPageException shows up in the diff.
             return new Outcome(null, ex, false);
         }
@@ -539,6 +552,15 @@ internal static partial class ContractCaseRunner
         {
             return "body is not JSON: " + Encoding.UTF8.GetString(request.Body);
         }
+    }
+
+    private static JsonValue MinCall(Outcome outcome, double minCallMs)
+    {
+        // N-DURATION-MS: the call's duration on the harness's monotonic clock, in integer milliseconds.
+        var elapsed = Math.Round(outcome.ElapsedTicks * 1000.0 / Stopwatch.Frequency, MidpointRounding.AwayFromZero);
+        return elapsed >= minCallMs
+            ? JsonValue.Create(minCallMs)
+            : JsonValue.Create(string.Create(CultureInfo.InvariantCulture, $"only {elapsed} ms"));
     }
 
     private static JsonValue Gap(IReadOnlyList<RecordedRequest> recorded, int index, double minGap)
