@@ -12,14 +12,15 @@ concurrency:
 
 permissions:
   contents: read
-  # Required by codecov-action's tokenless (OIDC) upload on public repos —
-  # Codecov rejects plain tokenless uploads on the default (protected)
-  # branch, so OIDC is the way. Mirrors the sdk-node / sdk-go / sdk-ruby /
-  # sdk-php / sdk-rust setup.
-  id-token: write
 
 jobs:
   test:
+    # id-token: write is for the Codecov OIDC upload in this job only.
+    # contents: read is restated because a job-level block replaces the
+    # workflow-level one.
+    permissions:
+      contents: read
+      id-token: write
     name: ${{ matrix.os }} / ${{ matrix.framework }}
     strategy:
       fail-fast: false
