@@ -1,0 +1,53 @@
+<Project>
+
+  <!--
+    Compiles every examples/*.cs against the SDK, so an example that drifts from the
+    API fails the build. Each file is a standalone program with top-level statements,
+    and a project can hold only one of those, so the project builds itself once per
+    file: the outer build fans out to one inner build per file (Example=<name>).
+    Nothing is excluded or stubbed; the files stay as the docs site embeds them.
+  -->
+  <Import Sdk="Microsoft.NET.Sdk" Project="Sdk.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>PoliPage.Examples</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsPublishable>false</IsPublishable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Same opt-out as samples/Demo: examples are teaching code, not shipped surface; CA1861 stays off because a one-shot snippet keeps its inline array. -->
+    <EnablePoliPageAnalyzers>false</EnablePoliPageAnalyzers>
+    <NoWarn>$(NoWarn);CS1591;CA1303;CA1305;CA1812;CA1031;CA1861</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Example)' != ''">
+    <IntermediateOutputPath>obj/$(Configuration)/$(Example)/</IntermediateOutputPath>
+    <OutputPath>bin/$(Configuration)/$(Example)/</OutputPath>
+    <AssemblyName>Example.$(Example)</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(Example)' != ''">
+    <Compile Include="$(Example).cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Example is dropped for the reference so the SDK is built once, not once per example (parallel builds of one obj/ race). -->
+    <ProjectReference Include="..\src\PoliPage\PoliPage.csproj" GlobalPropertiesToRemove="Example" />
+  </ItemGroup>
+
+  <Import Sdk="Microsoft.NET.Sdk" Project="Sdk.targets" />
+
+  <ItemGroup>
+    <ExampleFile Include="*.cs" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(Example)' == ''">
+    <BuildDependsOn>BuildEachExample</BuildDependsOn>
+  </PropertyGroup>
+
+  <Target Name="BuildEachExample">
+    <MSBuild Projects="$(MSBuildProjectFullPath)" Targets="Build" Properties="Example=%(ExampleFile.Filename)" />
+  </Target>
+
+</Project>
