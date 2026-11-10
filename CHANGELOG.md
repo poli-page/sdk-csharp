@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every call. It is now honoured, in several waits; `TimeSpan.MaxValue` never
   fires.
 
+### Changed
+
+- CI pins the API contract v0.15.0-dev.1
+  ([poli-page/api-contract](https://github.com/poli-page/api-contract)), format
+  2: the harness also checks `expect.minCallMs`, the shortest time a call may
+  take, on a monotonic clock.
+
 ## [0.13.0] - 2026-11-02
 
 Conformance with the Poli Page API contract v0.13.0
