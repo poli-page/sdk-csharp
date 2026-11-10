@@ -17,12 +17,14 @@ public sealed class FullTimeoutTests
     [Fact]
     public async Task A_timer_that_wakes_early_waits_again_for_the_rest()
     {
-        // A timer that always wakes after half of what it was asked for, and says it is done.
+        // The first wait returns at once, as a timer that wakes early says it is done; later
+        // waits take what they are asked. Without the re-arm the token fires at about 0 ms,
+        // whatever the runner's load, so the test never depends on scheduling.
         var wakes = 0;
         Task EarlyDelay(TimeSpan asked, CancellationToken token)
         {
             wakes++;
-            return Task.Delay(asked / 2, token);
+            return wakes == 1 ? Task.CompletedTask : Task.Delay(asked, token);
         }
 
         var watch = Stopwatch.StartNew();
