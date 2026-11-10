@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The attempt timeout, the download timeout and the idle timeout of a streamed
+  download never fire early. They used `CancellationTokenSource(timeout)`, which
+  reads a coarse clock (about 15.6 ms on Windows) and can wake up to one tick
+  before the bound; they now wait again for the rest, as the retry sleep does.
+- A `RequestTimeout` (or `RequestOptions.RequestTimeout`) above about 49.7 days,
+  the longest single timer .NET accepts, threw `ArgumentOutOfRangeException` on
+  every call. It is now honoured, in several waits; `TimeSpan.MaxValue` never
+  fires.
+
+### Changed
+
+- CI pins the API contract v0.15.0-dev.1
+  ([poli-page/api-contract](https://github.com/poli-page/api-contract)), format
+  2: the harness also checks `expect.minCallMs`, the shortest time a call may
+  take, on a monotonic clock.
+
 ## [0.13.0] - 2026-11-02
 
 Conformance with the Poli Page API contract v0.13.0

@@ -189,7 +189,7 @@ internal sealed class HttpTransport : ITransport
 
         // A fresh timeout per attempt, so a timed-out attempt does not prevent the retries.
         // It bounds the connection, the headers and the body together.
-        using var timeoutCts = new CancellationTokenSource(attemptTimeout);
+        using var timeoutCts = new FullTimeout(attemptTimeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(callerToken, timeoutCts.Token);
         var attemptToken = linkedCts.Token;
         var t0 = Stopwatch.GetTimestamp();
@@ -217,7 +217,7 @@ internal sealed class HttpTransport : ITransport
         HttpResponseMessage response,
         bool expectsJson,
         long t0,
-        CancellationTokenSource timeoutCts,
+        FullTimeout timeoutCts,
         TimeSpan attemptTimeout,
         CancellationToken attemptToken,
         CancellationToken callerToken)
@@ -275,7 +275,7 @@ internal sealed class HttpTransport : ITransport
     /// that fired, and anything else is a <c>network_error</c>.
     /// </summary>
     private PoliPageException TransportFailure(
-        Exception ex, CancellationTokenSource timeoutCts, TimeSpan attemptTimeout, CancellationToken callerToken)
+        Exception ex, FullTimeout timeoutCts, TimeSpan attemptTimeout, CancellationToken callerToken)
     {
         if (callerToken.IsCancellationRequested)
             throw SdkErrors.Aborted(ex);
@@ -334,23 +334,9 @@ internal sealed class HttpTransport : ITransport
     /// </summary>
     internal static async Task SleepAsync(TimeSpan delay, CancellationToken callerToken)
     {
-        var end = Stopwatch.GetTimestamp() + (long)Math.Ceiling(delay.TotalSeconds * Stopwatch.Frequency);
-        while (true)
-        {
-            var left = end - Stopwatch.GetTimestamp();
-            if (left <= 0)
-                return;
-
-            var leftMs = Math.Ceiling(left * 1000.0 / Stopwatch.Frequency);
-            try
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(leftMs), callerToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException ex) when (callerToken.IsCancellationRequested)
-            {
-                throw SdkErrors.Aborted(ex);
-            }
-        }
+        var deadline = MonotonicWait.Deadline(Stopwatch.GetTimestamp(), delay);
+        if (!await MonotonicWait.UntilAsync(deadline, Task.Delay, callerToken).ConfigureAwait(false))
+            throw SdkErrors.Aborted(new OperationCanceledException(callerToken));
     }
 
     private HttpRequestMessage BuildRequest(

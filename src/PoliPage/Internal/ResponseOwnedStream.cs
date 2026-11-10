@@ -121,8 +121,8 @@ internal sealed class ResponseOwnedStream : Stream
     }
 
     /// <summary>A timer for one read, or <see langword="null"/> with an infinite timeout.</summary>
-    private CancellationTokenSource? StartIdleTimer()
-        => _idleTimeout == System.Threading.Timeout.InfiniteTimeSpan ? null : new CancellationTokenSource(_idleTimeout);
+    private FullTimeout? StartIdleTimer()
+        => _idleTimeout == System.Threading.Timeout.InfiniteTimeSpan ? null : new FullTimeout(_idleTimeout);
 
     private void AbortOnTimeout()
     {
@@ -136,21 +136,21 @@ internal sealed class ResponseOwnedStream : Stream
             throw SdkErrors.DownloadTimeout(inner: null);
     }
 
-    private bool TimedOut(CancellationTokenSource? idle)
+    private bool TimedOut(FullTimeout? idle)
     {
         if (idle?.IsCancellationRequested == true)
             _timedOut = true;
         return _timedOut;
     }
 
-    private bool IsReadFailure(Exception ex, CancellationTokenSource? idle, CancellationToken readToken)
+    private bool IsReadFailure(Exception ex, FullTimeout? idle, CancellationToken readToken)
         => !_disposed
             && (SdkErrors.IsTransportFailure(ex)
                 || _callToken.IsCancellationRequested
                 || readToken.IsCancellationRequested
                 || TimedOut(idle));
 
-    private PoliPageException Failure(Exception ex, CancellationTokenSource? idle, CancellationToken readToken)
+    private PoliPageException Failure(Exception ex, FullTimeout? idle, CancellationToken readToken)
         => readToken.IsCancellationRequested
             ? SdkErrors.Aborted(ex)
             : PoliPageClient.DownloadFailure(ex, TimedOut(idle), _callToken);

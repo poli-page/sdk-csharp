@@ -1,6 +1,7 @@
 // The harness converts between JSON and the SDK's types with reflection-based
 // System.Text.Json, as the other tests do; trimming and AOT do not apply to test code.
 #pragma warning disable IL2026, IL3050
+using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -62,7 +63,7 @@ internal static partial class ContractCaseRunner
     private static readonly string[] OptionFields = ["maxRetries", "retryDelayMs", "timeoutMs"];
     private static readonly string[] CallFields = ["method", "args", "cancelAfterMs"];
     private static readonly string[] AnswerFields = ["status", "headers", "json", "text", "base64"];
-    private static readonly string[] ExpectFields = ["requests", "events", "result"];
+    private static readonly string[] ExpectFields = ["requests", "events", "result", "minCallMs"];
     private static readonly string[] BodyFields = ["json", "text", "base64"];
 
     [GeneratedRegex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", RegexOptions.CultureInvariant)]
@@ -126,6 +127,8 @@ internal static partial class ContractCaseRunner
         var substitutedRequests = (JsonArray)Placeholders.Substitute(wantRequests, origin)!;
         AddDiff(problems, "requests", DescribeRequests(server.Requests, substitutedRequests, apiKey), substitutedRequests);
         AddDiff(problems, "OnRequest / OnRetry events", DescribeEvents(observed.Snapshot(), wantEvents), wantEvents);
+        if (expect["minCallMs"] is { } minCall)
+            AddDiff(problems, "minCallMs", MinCall(outcome, minCall.GetValue<double>()), minCall.DeepClone());
         if (checkResult)
         {
             var gotResult = outcome.Error is { } error
@@ -148,7 +151,7 @@ internal static partial class ContractCaseRunner
     // Calling the SDK
     // ------------------------------------------------------------------ //
 
-    private sealed record Outcome(JsonNode? Value, Exception? Error, bool TimedOut);
+    private sealed record Outcome(JsonNode? Value, Exception? Error, bool TimedOut, long ElapsedTicks = 0);
 
     /// <summary>The hook events, in order, as the contract shapes them.</summary>
     private sealed class Observed(List<JsonObject> events)
@@ -213,11 +216,23 @@ internal static partial class ContractCaseRunner
                         cts.Cancel();
                 },
             });
+            // call.args are parsed first, so neither clock counts their deserialization.
+            var call = PrepareCall(client, method, args);
             if (cancelAfterMs is { } ms)
                 cts.CancelAfter(ms);
 
-            var value = await InvokeAsync(client, method, args, cts.Token).WaitAsync(CaseTimeout);
-            return new Outcome(value, null, false);
+            // The clock starts right before the call and stops when it returns or throws,
+            // before anything is compared or the mock closes (sdk-specification.md §12.1).
+            var start = Stopwatch.GetTimestamp();
+            try
+            {
+                var value = await call(cts.Token).WaitAsync(CaseTimeout);
+                return new Outcome(value, null, false, Stopwatch.GetTimestamp() - start);
+            }
+            catch (Exception ex) when (ex is not (TimeoutException or ContractCaseException or JsonException))
+            {
+                return new Outcome(null, ex, false, Stopwatch.GetTimestamp() - start);
+            }
         }
         catch (TimeoutException)
         {
@@ -226,60 +241,95 @@ internal static partial class ContractCaseRunner
         }
         catch (Exception ex) when (ex is not (ContractCaseException or JsonException))
         {
-            // The SDK's error, from the constructor or the call. An error that is not a
+            // The SDK's error, from the constructor. An error that is not a
             // PoliPageException shows up in the diff.
             return new Outcome(null, ex, false);
         }
     }
 
-    private static async Task<JsonNode?> InvokeAsync(
-        PoliPageClient client, string method, JsonArray args, CancellationToken cancellationToken)
+    /// <summary>
+    /// Parses <paramref name="args"/> for <paramref name="method"/> and returns the SDK call,
+    /// not started yet.
+    /// </summary>
+    private static Func<CancellationToken, Task<JsonNode?>> PrepareCall(
+        PoliPageClient client, string method, JsonArray args)
     {
         switch (method)
         {
             case "render.pdf":
-                ArgCount(args, 1, 1);
-                return Bytes(await client.Render.PdfAsync(Arg<RenderInput>(args, 0), cancellationToken: cancellationToken));
+                {
+                    ArgCount(args, 1, 1);
+                    var input = Arg<RenderInput>(args, 0);
+                    return async ct => Bytes(await client.Render.PdfAsync(input, cancellationToken: ct));
+                }
+
             case "render.pdfStream":
                 {
                     ArgCount(args, 1, 1);
-                    var stream = await client.Render.PdfStreamAsync(Arg<RenderInput>(args, 0), cancellationToken: cancellationToken);
-                    await using (stream)
+                    var input = Arg<RenderInput>(args, 0);
+                    return async ct =>
                     {
-                        using var copy = new MemoryStream();
-                        await stream.CopyToAsync(copy, cancellationToken);
-                        return Bytes(copy.ToArray());
-                    }
+                        var stream = await client.Render.PdfStreamAsync(input, cancellationToken: ct);
+                        await using (stream)
+                        {
+                            using var copy = new MemoryStream();
+                            await stream.CopyToAsync(copy, ct);
+                            return Bytes(copy.ToArray());
+                        }
+                    };
                 }
 
             case "render.document":
-                ArgCount(args, 1, 1);
-                return Descriptor(await client.Render.DocumentAsync(Arg<RenderInput>(args, 0), cancellationToken: cancellationToken));
+                {
+                    ArgCount(args, 1, 1);
+                    var input = Arg<RenderInput>(args, 0);
+                    return async ct => Descriptor(await client.Render.DocumentAsync(input, cancellationToken: ct));
+                }
+
             case "documents.get":
-                ArgCount(args, 1, 1);
-                return Descriptor(await client.Documents.GetAsync(Arg<string>(args, 0), cancellationToken: cancellationToken));
+                {
+                    ArgCount(args, 1, 1);
+                    var id = Arg<string>(args, 0);
+                    return async ct => Descriptor(await client.Documents.GetAsync(id, cancellationToken: ct));
+                }
+
             case "documents.preview":
                 {
                     ArgCount(args, 1, 1);
-                    var preview = await client.Documents.PreviewAsync(Arg<string>(args, 0), cancellationToken: cancellationToken);
-                    // N-PREVIEW
-                    return new JsonObject { ["html"] = preview.Html, ["pageCount"] = preview.PageCount };
+                    var id = Arg<string>(args, 0);
+                    return async ct =>
+                    {
+                        var preview = await client.Documents.PreviewAsync(id, cancellationToken: ct);
+                        // N-PREVIEW
+                        return new JsonObject { ["html"] = preview.Html, ["pageCount"] = preview.PageCount };
+                    };
                 }
 
             case "documents.thumbnails":
                 {
                     ArgCount(args, 1, 2);
                     var thumbnailOptions = args.Count > 1 ? Arg<ThumbnailOptions>(args, 1) : null;
-                    var thumbnails = await client.Documents.ThumbnailsAsync(
-                        Arg<string>(args, 0), thumbnailOptions, cancellationToken: cancellationToken);
-                    // N-THUMBS-ARRAY: the SDK already returns the unwrapped list.
-                    return JsonSerializer.SerializeToNode(thumbnails);
+                    var id = Arg<string>(args, 0);
+                    return async ct =>
+                    {
+                        var thumbnails = await client.Documents.ThumbnailsAsync(
+                            id, thumbnailOptions, cancellationToken: ct);
+                        // N-THUMBS-ARRAY: the SDK already returns the unwrapped list.
+                        return JsonSerializer.SerializeToNode(thumbnails);
+                    };
                 }
 
             case "documents.delete":
-                ArgCount(args, 1, 1);
-                await client.Documents.DeleteAsync(Arg<string>(args, 0), cancellationToken: cancellationToken);
-                return null; // N-DELETE-NULL
+                {
+                    ArgCount(args, 1, 1);
+                    var id = Arg<string>(args, 0);
+                    return async ct =>
+                    {
+                        await client.Documents.DeleteAsync(id, cancellationToken: ct);
+                        return null; // N-DELETE-NULL
+                    };
+                }
+
             default:
                 throw new ContractCaseException($"unknown SDK method in the contract: {method}");
         }
@@ -539,6 +589,15 @@ internal static partial class ContractCaseRunner
         {
             return "body is not JSON: " + Encoding.UTF8.GetString(request.Body);
         }
+    }
+
+    private static JsonValue MinCall(Outcome outcome, double minCallMs)
+    {
+        // N-DURATION-MS: the call's duration on the harness's monotonic clock, in integer milliseconds.
+        var elapsed = Math.Round(outcome.ElapsedTicks * 1000.0 / Stopwatch.Frequency, MidpointRounding.AwayFromZero);
+        return elapsed >= minCallMs
+            ? JsonValue.Create(minCallMs)
+            : JsonValue.Create(string.Create(CultureInfo.InvariantCulture, $"only {elapsed} ms"));
     }
 
     private static JsonValue Gap(IReadOnlyList<RecordedRequest> recorded, int index, double minGap)

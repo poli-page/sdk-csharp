@@ -78,5 +78,17 @@ public sealed class RetryAfterParserTests
         Stopwatch.GetElapsedTime(start).Should().BeLessThan(TimeSpan.FromSeconds(3));
     }
 
+    [Fact]
+    public async Task A_retry_wait_longer_than_one_TaskDelay_still_waits_and_raises_aborted()
+    {
+        // Above Task.Delay's longest single wait (about 49.7 days): capped steps, no throw.
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+
+        var act = () => HttpTransport.SleepAsync(TimeSpan.FromDays(60), cts.Token);
+
+        var thrown = await act.Should().ThrowAsync<PoliPageException>();
+        thrown.Which.Code.Should().Be(PoliPageErrorCode.Aborted);
+    }
+
     private static string HttpDate(DateTimeOffset at) => at.ToString("r", CultureInfo.InvariantCulture);
 }
