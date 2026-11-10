@@ -21,9 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Render.DocumentAsync` and `RenderToFileAsync` list `TEMPLATE_UNSAFE` among
   their errors (400: the template, a partial or an SVG asset holds an
   injection attempt; the message names it; not retried), and the exceptions
-  table lists it under `PoliPageValidationException`. A test pins that a
-  `400 TEMPLATE_UNSAFE` answer throws `PoliPageValidationException` and is
-  sent once.
+  table lists it under `PoliPageValidationException`.
 
 ### Changed
 
