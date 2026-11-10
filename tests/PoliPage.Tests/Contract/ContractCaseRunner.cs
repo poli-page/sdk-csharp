@@ -216,6 +216,8 @@ internal static partial class ContractCaseRunner
                         cts.Cancel();
                 },
             });
+            // call.args are parsed first, so neither clock counts their deserialization.
+            var call = PrepareCall(client, method, args);
             if (cancelAfterMs is { } ms)
                 cts.CancelAfter(ms);
 
@@ -224,7 +226,7 @@ internal static partial class ContractCaseRunner
             var start = Stopwatch.GetTimestamp();
             try
             {
-                var value = await InvokeAsync(client, method, args, cts.Token).WaitAsync(CaseTimeout);
+                var value = await call(cts.Token).WaitAsync(CaseTimeout);
                 return new Outcome(value, null, false, Stopwatch.GetTimestamp() - start);
             }
             catch (Exception ex) when (ex is not (TimeoutException or ContractCaseException or JsonException))
@@ -245,54 +247,89 @@ internal static partial class ContractCaseRunner
         }
     }
 
-    private static async Task<JsonNode?> InvokeAsync(
-        PoliPageClient client, string method, JsonArray args, CancellationToken cancellationToken)
+    /// <summary>
+    /// Parses <paramref name="args"/> for <paramref name="method"/> and returns the SDK call,
+    /// not started yet.
+    /// </summary>
+    private static Func<CancellationToken, Task<JsonNode?>> PrepareCall(
+        PoliPageClient client, string method, JsonArray args)
     {
         switch (method)
         {
             case "render.pdf":
-                ArgCount(args, 1, 1);
-                return Bytes(await client.Render.PdfAsync(Arg<RenderInput>(args, 0), cancellationToken: cancellationToken));
+                {
+                    ArgCount(args, 1, 1);
+                    var input = Arg<RenderInput>(args, 0);
+                    return async ct => Bytes(await client.Render.PdfAsync(input, cancellationToken: ct));
+                }
+
             case "render.pdfStream":
                 {
                     ArgCount(args, 1, 1);
-                    var stream = await client.Render.PdfStreamAsync(Arg<RenderInput>(args, 0), cancellationToken: cancellationToken);
-                    await using (stream)
+                    var input = Arg<RenderInput>(args, 0);
+                    return async ct =>
                     {
-                        using var copy = new MemoryStream();
-                        await stream.CopyToAsync(copy, cancellationToken);
-                        return Bytes(copy.ToArray());
-                    }
+                        var stream = await client.Render.PdfStreamAsync(input, cancellationToken: ct);
+                        await using (stream)
+                        {
+                            using var copy = new MemoryStream();
+                            await stream.CopyToAsync(copy, ct);
+                            return Bytes(copy.ToArray());
+                        }
+                    };
                 }
 
             case "render.document":
-                ArgCount(args, 1, 1);
-                return Descriptor(await client.Render.DocumentAsync(Arg<RenderInput>(args, 0), cancellationToken: cancellationToken));
+                {
+                    ArgCount(args, 1, 1);
+                    var input = Arg<RenderInput>(args, 0);
+                    return async ct => Descriptor(await client.Render.DocumentAsync(input, cancellationToken: ct));
+                }
+
             case "documents.get":
-                ArgCount(args, 1, 1);
-                return Descriptor(await client.Documents.GetAsync(Arg<string>(args, 0), cancellationToken: cancellationToken));
+                {
+                    ArgCount(args, 1, 1);
+                    var id = Arg<string>(args, 0);
+                    return async ct => Descriptor(await client.Documents.GetAsync(id, cancellationToken: ct));
+                }
+
             case "documents.preview":
                 {
                     ArgCount(args, 1, 1);
-                    var preview = await client.Documents.PreviewAsync(Arg<string>(args, 0), cancellationToken: cancellationToken);
-                    // N-PREVIEW
-                    return new JsonObject { ["html"] = preview.Html, ["pageCount"] = preview.PageCount };
+                    var id = Arg<string>(args, 0);
+                    return async ct =>
+                    {
+                        var preview = await client.Documents.PreviewAsync(id, cancellationToken: ct);
+                        // N-PREVIEW
+                        return new JsonObject { ["html"] = preview.Html, ["pageCount"] = preview.PageCount };
+                    };
                 }
 
             case "documents.thumbnails":
                 {
                     ArgCount(args, 1, 2);
                     var thumbnailOptions = args.Count > 1 ? Arg<ThumbnailOptions>(args, 1) : null;
-                    var thumbnails = await client.Documents.ThumbnailsAsync(
-                        Arg<string>(args, 0), thumbnailOptions, cancellationToken: cancellationToken);
-                    // N-THUMBS-ARRAY: the SDK already returns the unwrapped list.
-                    return JsonSerializer.SerializeToNode(thumbnails);
+                    var id = Arg<string>(args, 0);
+                    return async ct =>
+                    {
+                        var thumbnails = await client.Documents.ThumbnailsAsync(
+                            id, thumbnailOptions, cancellationToken: ct);
+                        // N-THUMBS-ARRAY: the SDK already returns the unwrapped list.
+                        return JsonSerializer.SerializeToNode(thumbnails);
+                    };
                 }
 
             case "documents.delete":
-                ArgCount(args, 1, 1);
-                await client.Documents.DeleteAsync(Arg<string>(args, 0), cancellationToken: cancellationToken);
-                return null; // N-DELETE-NULL
+                {
+                    ArgCount(args, 1, 1);
+                    var id = Arg<string>(args, 0);
+                    return async ct =>
+                    {
+                        await client.Documents.DeleteAsync(id, cancellationToken: ct);
+                        return null; // N-DELETE-NULL
+                    };
+                }
+
             default:
                 throw new ContractCaseException($"unknown SDK method in the contract: {method}");
         }
