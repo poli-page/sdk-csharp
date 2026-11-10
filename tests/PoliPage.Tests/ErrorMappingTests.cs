@@ -102,6 +102,38 @@ public sealed class ErrorMappingTests
     }
 
     // ------------------------------------------------------------------ //
+    // 1b. 400 TEMPLATE_UNSAFE → PoliPageValidationException, not retried
+    // ------------------------------------------------------------------ //
+
+    [Fact]
+    public async Task Status_400_TEMPLATE_UNSAFE_throws_PoliPageValidationException_and_is_not_retried()
+    {
+        using var harness = StartServerAndClient();
+        const string detail =
+            "Unsafe construct in templates/invoice/invoice.html: <script> element. "
+            + "Templates may not hold script, event handlers or anything the renderer would fetch or run.";
+        StubError(harness.Server, 400, ErrorJson("TEMPLATE_UNSAFE", detail));
+
+        // Why: retries allowed, so the single request below shows the SDK does not retry it.
+        using var client = new PoliPageClient(new PoliPageClientOptions
+        {
+            ApiKey = "pp_sandbox_unit",
+            BaseUrl = new Uri(harness.Server.Url!),
+            MaxRetries = 2,
+        });
+
+        var act = async () => await CallRenderAsync(client);
+
+        var ex = await act.Should().ThrowAsync<PoliPageValidationException>();
+        ex.Which.GetType().Should().Be<PoliPageValidationException>();
+        ex.Which.Code.Should().Be(PoliPageErrorCode.TemplateUnsafe);
+        ex.Which.StatusCode.Should().Be(400);
+        ex.Which.Message.Should().Be(detail);
+        ex.Which.IsRetryable().Should().BeFalse();
+        harness.Server.LogEntries.Should().ContainSingle("TEMPLATE_UNSAFE is never retried");
+    }
+
+    // ------------------------------------------------------------------ //
     // 2. 401 → PoliPageAuthException / INVALID_API_KEY
     // ------------------------------------------------------------------ //
 
