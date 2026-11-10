@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   download never fire early. They used `CancellationTokenSource(timeout)`, which
   reads a coarse clock (about 15.6 ms on Windows) and can wake up to one tick
   before the bound; they now wait again for the rest, as the retry sleep does.
+- A `RequestTimeout` (or `RequestOptions.RequestTimeout`) above about 49.7 days,
+  the longest single timer .NET accepts, threw `ArgumentOutOfRangeException` on
+  every call. It is now honoured, in several waits; `TimeSpan.MaxValue` never
+  fires.
 
 ## [0.13.0] - 2026-11-02
 

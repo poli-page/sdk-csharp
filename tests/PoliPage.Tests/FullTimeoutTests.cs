@@ -68,6 +68,78 @@ public sealed class FullTimeoutTests
         timeout.IsCancellationRequested.Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(60)] // above Task.Delay's longest wait (about 49.7 days)
+    [InlineData(-1)] // TimeSpan.MaxValue: past the monotonic clock's range
+    public async Task A_timer_longer_than_one_delay_waits_in_capped_steps(int days)
+    {
+        var bound = days < 0 ? TimeSpan.MaxValue : TimeSpan.FromDays(days);
+        var asked = new List<TimeSpan>();
+        Exception? thrown = null;
+        Task RealDelay(TimeSpan delay, CancellationToken token)
+        {
+            lock (asked)
+                asked.Add(delay);
+            try
+            {
+                return Task.Delay(delay, token);
+            }
+            catch (Exception ex)
+            {
+                thrown = ex;
+                throw;
+            }
+        }
+
+        using var timeout = new FullTimeout(bound, RealDelay);
+        await Task.Delay(100);
+
+        thrown.Should().BeNull();
+        timeout.IsCancellationRequested.Should().BeFalse();
+        lock (asked)
+            asked.Should().Equal(MonotonicWait.MaxSingleDelay);
+    }
+
+    [Fact]
+    public void A_negative_timer_is_rejected_as_by_a_CancellationTokenSource()
+    {
+        var act = () => new FullTimeout(TimeSpan.FromMilliseconds(-2));
+
+        act.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void A_deadline_saturates_instead_of_overflowing()
+    {
+        var oneSecond = Stopwatch.Frequency;
+
+        MonotonicWait.Deadline(1_000, TimeSpan.FromSeconds(1)).Should().Be(1_000 + oneSecond);
+        MonotonicWait.Deadline(1_000, TimeSpan.MaxValue).Should().Be(long.MaxValue);
+        MonotonicWait.Deadline(long.MaxValue - 10, TimeSpan.FromSeconds(1)).Should().Be(long.MaxValue);
+        MonotonicWait.Deadline(1_000, TimeSpan.Zero).Should().Be(1_000);
+    }
+
+    [Fact]
+    public void A_single_delay_is_rounded_up_and_capped_at_the_TaskDelay_maximum()
+    {
+        var oneMs = Stopwatch.Frequency / 1000.0;
+        const long now = 1_000;
+
+        MonotonicWait.NextDelay(now, now).Should().BeNull();
+        MonotonicWait.NextDelay(now - 1, now).Should().BeNull();
+        MonotonicWait.NextDelay(now + (long)Math.Ceiling(1.5 * oneMs), now).Should().Be(TimeSpan.FromMilliseconds(2));
+        MonotonicWait.NextDelay(MonotonicWait.Deadline(now, TimeSpan.FromDays(60)), now)
+            .Should().Be(MonotonicWait.MaxSingleDelay);
+        MonotonicWait.NextDelay(long.MaxValue, now).Should().Be(MonotonicWait.MaxSingleDelay);
+
+        // The cap is the longest wait Task.Delay accepts.
+        var cancelled = new CancellationToken(canceled: true);
+        Action longest = () => _ = Task.Delay(MonotonicWait.MaxSingleDelay, cancelled);
+        Action longer = () => _ = Task.Delay(MonotonicWait.MaxSingleDelay + TimeSpan.FromMilliseconds(1), cancelled);
+        longest.Should().NotThrow();
+        longer.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
     private static async Task WaitUntilCancelledAsync(CancellationToken token)
     {
         var done = new TaskCompletionSource();

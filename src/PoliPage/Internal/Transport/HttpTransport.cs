@@ -334,23 +334,9 @@ internal sealed class HttpTransport : ITransport
     /// </summary>
     internal static async Task SleepAsync(TimeSpan delay, CancellationToken callerToken)
     {
-        var end = Stopwatch.GetTimestamp() + (long)Math.Ceiling(delay.TotalSeconds * Stopwatch.Frequency);
-        while (true)
-        {
-            var left = end - Stopwatch.GetTimestamp();
-            if (left <= 0)
-                return;
-
-            var leftMs = Math.Ceiling(left * 1000.0 / Stopwatch.Frequency);
-            try
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(leftMs), callerToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException ex) when (callerToken.IsCancellationRequested)
-            {
-                throw SdkErrors.Aborted(ex);
-            }
-        }
+        var deadline = MonotonicWait.Deadline(Stopwatch.GetTimestamp(), delay);
+        if (!await MonotonicWait.UntilAsync(deadline, Task.Delay, callerToken).ConfigureAwait(false))
+            throw SdkErrors.Aborted(new OperationCanceledException(callerToken));
     }
 
     private HttpRequestMessage BuildRequest(
