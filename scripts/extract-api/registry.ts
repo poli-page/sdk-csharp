@@ -70,6 +70,7 @@ const RENDER_ERRORS = [
   'PROJECT_NOT_FOUND',
   'TEMPLATE_NOT_FOUND',
   'VALIDATION_ERROR',
+  'TEMPLATE_UNSAFE',
   'invalid_response',
 ] as const;
 const RENDER_DOWNLOAD_ERRORS = [...RENDER_ERRORS, 'DOWNLOAD_FAILED'] as const;
@@ -242,7 +243,7 @@ export const PUBLIC_EXCEPTIONS: readonly PublicException[] = [
   { name: 'PoliPageAuthException',            memberId: 'T:PoliPage.PoliPageAuthException',            statusCode: '401 / 403', codes: ['MISSING_API_KEY', 'INVALID_API_KEY', 'FORBIDDEN', 'ORGANIZATION_PAYMENT_GRACE', 'ENVIRONMENT_PROTECTED', 'THUMBNAILS_NOT_AVAILABLE'] },
   { name: 'PoliPageNotFoundException',        memberId: 'T:PoliPage.PoliPageNotFoundException',        statusCode: '404',       codes: ['NOT_FOUND', 'PROJECT_NOT_FOUND', 'PROJECT_NOT_IN_ENVIRONMENT', 'TEMPLATE_NOT_FOUND', 'DOCUMENT_NOT_FOUND'] },
   { name: 'PoliPageGoneException',            memberId: 'T:PoliPage.PoliPageGoneException',            statusCode: '410',       codes: ['DOCUMENT_GONE'] },
-  { name: 'PoliPageValidationException',      memberId: 'T:PoliPage.PoliPageValidationException',      statusCode: '400 / 422', codes: ['VALIDATION_ERROR', 'ENVIRONMENT_MISMATCH', 'TEMPLATE_ERROR', 'EMPTY_DOCUMENT'] },
+  { name: 'PoliPageValidationException',      memberId: 'T:PoliPage.PoliPageValidationException',      statusCode: '400 / 422', codes: ['VALIDATION_ERROR', 'ENVIRONMENT_MISMATCH', 'TEMPLATE_ERROR', 'TEMPLATE_UNSAFE', 'EMPTY_DOCUMENT'] },
   { name: 'PoliPageRateLimitException',       memberId: 'T:PoliPage.PoliPageRateLimitException',       statusCode: '429',       codes: ['RATE_LIMIT_EXCEEDED', 'QUOTA_EXCEEDED', 'OVERAGE_CAP_EXCEEDED'] },
   { name: 'PoliPageNetworkException',         memberId: 'T:PoliPage.PoliPageNetworkException',         statusCode: '0',         codes: ['network_error'] },
   { name: 'PoliPageDownloadException',        memberId: 'T:PoliPage.PoliPageDownloadException',        statusCode: 'storage',   codes: ['DOWNLOAD_FAILED'] },

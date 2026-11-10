@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the longest single timer .NET accepts, threw `ArgumentOutOfRangeException` on
   every call. It is now honoured, in several waits; `TimeSpan.MaxValue` never
   fires.
+- Docs: the reference pages of `Render.PdfAsync`, `Render.PdfStreamAsync`,
+  `Render.DocumentAsync` and `RenderToFileAsync` list `TEMPLATE_UNSAFE` among
+  their errors (400: the template, a partial or an SVG asset holds an
+  injection attempt; the message names it; not retried), and the exceptions
+  table lists it under `PoliPageValidationException`.
 
 ### Changed
 
