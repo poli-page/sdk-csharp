@@ -37,6 +37,12 @@
       Pin to 7.2.1 (the patched release) to satisfy NU1902 / TreatWarningsAsErrors.
     -->
     <PackageVersion Include="Scriban.Signed" Version="7.2.1" />
+    <!--
+      Why: WireMock.Net 2.11.0 also pulls Microsoft.AspNetCore.WebUtilities 2.3.0 transitively,
+      affected by GHSA-6527-9fp8-r4x6 (patched in 2.3.14). Pin to the patched release to satisfy
+      NU1902 / TreatWarningsAsErrors. Remove once WireMock.Net ships a fixed dependency.
+    -->
+    <PackageVersion Include="Microsoft.AspNetCore.WebUtilities" Version="2.3.14" />
   </ItemGroup>
 
 </Project>

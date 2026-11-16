@@ -9,8 +9,11 @@
               which violates the no-underscores naming rule. Suppress in tests only.
       IDE1006: tests follow Method_state_expected naming even when async — the Async suffix
                rule (enforced for src/ in .editorconfig) makes test names unreadable.
+      CA2026: newer SDKs (10.0.404+) flag JsonDocument.Parse(...).RootElement and suggest
+              JsonElement.Parse, which does not exist on the net8.0 target. These are short-lived
+              test assertions, so the undisposed document is harmless.
     -->
-    <NoWarn>$(NoWarn);CS1591;CA1707;IDE1006</NoWarn>
+    <NoWarn>$(NoWarn);CS1591;CA1707;IDE1006;CA2026</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
