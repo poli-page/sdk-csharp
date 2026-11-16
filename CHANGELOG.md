@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-16
+
+Conformance with the Poli Page API contract v0.15.0
+([poli-page/api-contract](https://github.com/poli-page/api-contract)). The
+SDK shares its major.minor with the Poli Page API, so it moves from 0.13 to
+0.15. No public API changes: upgrading needs no code change.
+
 ### Fixed
 
 - The attempt timeout, the download timeout and the idle timeout of a streamed
@@ -25,10 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- CI pins the API contract v0.15.0-dev.1
+- CI and the Release workflow pin the API contract v0.15.0
   ([poli-page/api-contract](https://github.com/poli-page/api-contract)), format
   2: the harness also checks `expect.minCallMs`, the shortest time a call may
-  take, on a monotonic clock.
+  take, on a monotonic clock (the `timeout.hang` and `download.timeout` cases
+  use it instead of a per-request `minGapMsBefore`), and the new rule
+  R-WAIT-FULL, no wait ends early, which the first fix above implements.
 
 ## [0.13.0] - 2026-11-02
 
@@ -387,7 +396,8 @@ First public release of the Poli Page .NET SDK. Targets `net8.0` and
 - Deterministic build, embedded symbols (PDBs inside the assembly), and
   Source Link via `Microsoft.SourceLink.GitHub`.
 
-[Unreleased]: https://github.com/poli-page/sdk-csharp/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/poli-page/sdk-csharp/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/poli-page/sdk-csharp/compare/v0.13.0...v0.15.0
 [0.13.0]: https://github.com/poli-page/sdk-csharp/compare/v0.11.0...v0.13.0
 [0.11.0]: https://github.com/poli-page/sdk-csharp/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/poli-page/sdk-csharp/compare/v0.9.1...v0.10.0
