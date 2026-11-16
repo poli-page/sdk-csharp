@@ -28,15 +28,17 @@
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
     <PackageVersion Include="FluentAssertions" Version="7.2.2" />
-    <PackageVersion Include="WireMock.Net" Version="2.11.0" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
-    <PackageVersion Include="coverlet.collector" Version="10.1.0" />
+    <PackageVersion Include="WireMock.Net" Version="2.31.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+    <PackageVersion Include="coverlet.collector" Version="10.1.1" />
     <!--
-      Why: WireMock.Net 2.11.0 has a transitive dependency on Scriban.Signed 7.2.0, which
-      carries known moderate vulnerabilities (GHSA-6q7j-xr26-3h2c, GHSA-q6rr-fm2g-g5x8).
-      Pin to 7.2.1 (the patched release) to satisfy NU1902 / TreatWarningsAsErrors.
+      Why: WireMock.Net pulls Scriban.Signed transitively, and Scriban versions up to 7.2.1
+      carry known vulnerabilities (GHSA-6q7j-xr26-3h2c, GHSA-q6rr-fm2g-g5x8, GHSA-7jvp-hj45-2f2m)
+      that fail NU1902 under TreatWarningsAsErrors. WireMock.Net 2.31.0 needs >= 7.5.3, so a
+      lower central pin is a downgrade (NU1109). Pin to 7.6.1, the latest release, clear of
+      all known advisories.
     -->
-    <PackageVersion Include="Scriban.Signed" Version="7.2.1" />
+    <PackageVersion Include="Scriban.Signed" Version="7.6.1" />
     <!--
       Why: WireMock.Net 2.11.0 also pulls Microsoft.AspNetCore.WebUtilities 2.3.0 transitively,
       affected by GHSA-6527-9fp8-r4x6 (patched in 2.3.14). Pin to the patched release to satisfy
